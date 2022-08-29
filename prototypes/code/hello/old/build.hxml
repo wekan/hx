@@ -1,0 +1,11 @@
+-cp .
+-D analyzer-optimize
+-main Wekan
+
+--each
+
+--python bin/wekan.py
+
+--next
+
+--js bin/wekan.js

@@ -1,0 +1,17 @@
+_id
+createdAt
+services.password.bcrypt
+services.email.verificationTokens
+username
+emails
+modifiedAt
+profile.boardView
+profile.listSortBy
+profile.templatesBoardId
+profile.cardTemplatesSwimlaneId
+profile.listTemplatesSwimlaneId
+profile.boardTemplatesSwimlaneId
+profile.hiddenSystemMessages
+authenticationMethod
+sessionData
+

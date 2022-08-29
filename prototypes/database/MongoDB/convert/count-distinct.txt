@@ -1,0 +1,26 @@
+sqlite> select content_type, count(content_type) from attachments group by content_type;
+application/json|1
+application/msword|2
+application/octet-stream|15
+application/pdf|82
+application/postscript|1
+application/vnd.ms-excel|1
+application/vnd.ms-powerpoint|2
+application/vnd.oasis.opendocument.presentation|1
+application/vnd.oasis.opendocument.text|1
+application/vnd.openxmlformats-officedocument.presentationml.presentation|1
+application/vnd.openxmlformats-officedocument.wordprocessingml.document|1
+application/x-msdownload|1
+application/zip|1
+image/gif|57
+image/jpeg|231
+image/png|677
+image/tiff|1
+text/html|27
+"text/html; charset= utf-8 "|1
+"text/html; charset=ISO-8859-1"|1
+"text/html; charset=UTF-8"|52
+"text/html; charset=utf-8"|143
+text/html;charset=UTF-8|9
+text/html;charset=utf-8|31
+text/plain|3

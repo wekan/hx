@@ -1,0 +1,24 @@
+# Gambas Project File 3.0
+Title=WeKan
+Startup=WebformLogin
+UseHttpServer=1
+Icon=.public/Images/logo.svg
+Version=1.0.0
+Component=gb.crypt
+Component=gb.db
+Component=gb.db.sqlite3
+Component=gb.debug
+Component=gb.util
+Component=gb.signal
+Component=gb.util.web
+Component=gb.web
+Component=gb.web.gui
+Description="WeKan kanban. login/passwd: demo/demo . Logs stored in '/tmp/kanban.log' if exist. To create it: touch /tmp/kanban.log ; tail -f /tmp/kanban.log"
+Authors="https://wekan.team"
+Environment="GB_HTTPD_PORT=14000"
+TabSize=2
+Language=en_US
+Vendor=WeKanTeam
+Packager=1
+Tags=Internet,WebDevelopment,Web,SQLite,Example
+GambasVersion=3.15

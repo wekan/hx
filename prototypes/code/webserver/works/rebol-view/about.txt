@@ -1,0 +1,38 @@
+REBOL/view 2.7.8 Distribution
+
+Released: 7-Jan-2011
+
+Welcome to the world of REBOL.
+
+We're a small group of computer programmers, software engineers, scientists,
+hobbyists and students who reject the theory that all software projects must
+be large and complex. In fact, we think that 80% of software can be fairly
+small and simple, if you understand what you're doing, and you have the right
+tool. For us the REBOL language is that tool. It offers a more productive
+approach for those who don't accept the status quo.
+
+Of course, there are a few things you'll need to learn. Although we strive
+to keep simple things simple, when you're faced with a more complex problem
+you need to know the best approach to take. REBOL is a bit like molten metal,
+you can pour it into the form you need and hammer it to be sharp and efficient.
+However, that skill comes with practice and study. If you already know a
+programming language, you'll be at a slight disadvantage, because you'll
+need to unlearn a few things first.
+
+To begin, I recommend that you look at examples and tutorials found on the
+REBOL website in the Documents section. Always start with something simple
+and go from there. I still build each new program that way, even after writing
+thousands over the years. It lets you watch your program grow and test your
+ideas along the way. If you get frustrated, and we all do at times, there's
+a wonderful user group online that might be able to help. Of course, they
+also assume that you've searched the documents and done your homework first.
+Before long, you'll find yourself helping other new users get started.
+
+Thanks again for trying REBOL, and let's rebel together against the idea
+that software must be large and complex.
+
+-Carl Sassenrath
+
+Chief REBOL
+REBOL Technologies
+Ukiah, CA, USA

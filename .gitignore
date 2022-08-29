@@ -1,0 +1,4 @@
+.build/*
+.build*
+tests/mongo/mongoc/find
+node_modules

@@ -1,0 +1,27 @@
+{
+  "name": "Wekan",
+  "short_name": "Wekan",
+  "description": "The open-source Trello-like kanban",
+  "lang": "en-US",
+  "icons": [
+    {
+      "src": "/img/wekan-192.png",
+      "type": "image/png",
+      "sizes": "191x192"
+    },
+    {
+      "src": "/img/wekan-150.png",
+      "type": "image/png",
+      "sizes": "150x150"
+    },
+    {
+      "src": "/img/wekan-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "display": "standalone",
+  "background_color": "#dedede",
+  "theme_color": "#dedede",
+  "start_url": "/"
+}

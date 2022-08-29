@@ -4,3 +4,6 @@ tests/mongo/mongoc/find
 node_modules
 *.json
 *.csv
+*.sqlite
+*.sqlite3
+*.db

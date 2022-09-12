@@ -1,9 +1,9 @@
 --
 -- ultralight webframework for [Redbean web server](https://redbean.dev/)
 -- Copyright 2021 Paul Kulchenko
--- 
+--
 
-local NAME, VERSION = "fullmoon", "0.21"
+local NAME, VERSION = "fullmoon", "0.32"
 
 --[[-- support functions --]]--
 
@@ -27,6 +27,17 @@ if not setfenv then -- Lua 5.2+; this assumes f is a function
     return f
   end
 end
+local function loadsafe(data)
+  local f, err = load(data)
+  if not f then return f, err end
+  local c = -2
+  local hf, hm, hc = debug.gethook()
+  debug.sethook(function() c=c+1; if c>0 then error("failed safety check") end end, "c")
+  local ok, res = pcall(f)
+  c = -1
+  debug.sethook(hf, hm, hc)
+  return ok, res
+end
 local function argerror(cond, narg, extramsg, name)
   name = name or debug.getinfo(2, "n").name or "?"
   local msg = ("bad argument #%d to %s%s"):format(narg, name, extramsg and " "..extramsg or  "")
@@ -34,35 +45,47 @@ local function argerror(cond, narg, extramsg, name)
   return cond, msg
 end
 local function logFormat(fmt, ...)
+  argerror(type(fmt) == "string", 1, "(string expected)")
   return "(fm) "..(select('#', ...) == 0 and fmt or (fmt or ""):format(...))
 end
 local function getRBVersion()
   local v = GetRedbeanVersion()
   local major = math.floor(v / 2^16)
-  return ("%d.%d"):format(major, math.floor((v / 2^16 - major) * 2^8))
+  local minor = math.floor((v / 2^16 - major) * 2^8)
+  return ("%d.%d.%d"):format(major, minor, v % 2^8)
 end
+local LogDebug = function(...) return Log(kLogDebug, logFormat(...)) end
 local LogVerbose = function(...) return Log(kLogVerbose, logFormat(...)) end
 local LogInfo = function(...) return Log(kLogInfo, logFormat(...)) end
 local LogWarn = function(...) return Log(kLogWarn, logFormat(...)) end
 local istype = function(b)
   return function(mode) return math.floor((mode % (2*b)) / b) == 1 end end
-local isdirectory = istype(2^14)
-local isregfile = istype(2^15)
+local isregfile = unix and unix.S_ISREG or istype(2^15)
+-- headers that are not allowed to be set, as Redbean may
+-- also set them, leading to conflicts and improper handling
+local noHeaderMap = {
+  ["content-length"] = true,
+  ["transfer-encoding"] = true,
+  ["content-encoding"] = true,
+  date = true,
+  connection = "close",  -- the only value that is allowed
+}
 
 -- request headers based on https://datatracker.ietf.org/doc/html/rfc7231#section-5
 -- response headers based on https://datatracker.ietf.org/doc/html/rfc7231#section-7
 -- this allows the user to use `.ContentType` instead of `["Content-Type"]`
 -- Host is listed to allow retrieving Host header even in the presence of host attribute
-local headers = {}
-(function(s) for h in s:gmatch("[%w%-]+") do headers[h:gsub("-","")] = h end end)([[
+local headerMap = {}
+(function(s) for h in s:gmatch("[%w%-]+") do headerMap[h:gsub("-","")] = h end end)([[
   Cache-Control Host Max-Forwards Proxy-Authorization User-Agent
-  Accept-Charset Accept-Encoding Accept-Language
+  Accept-Charset Accept-Encoding Accept-Language Content-Disposition
   If-Match If-None-Match If-Modified-Since If-Unmodified-Since If-Range
   Content-Type Content-Encoding Content-Language Content-Location
   Retry-After Last-Modified WWW-Authenticate Proxy-Authenticate Accept-Ranges
+  Content-Length Transfer-Encoding
 ]])
-local htmlvoid = {} -- from https://html.spec.whatwg.org/#void-elements
-(function(s) for h in s:gmatch("%w+") do htmlvoid[h] = true end end)([[
+local htmlVoidTags = {} -- from https://html.spec.whatwg.org/#void-elements
+(function(s) for h in s:gmatch("%w+") do htmlVoidTags[h] = true end end)([[
   area base br col embed hr img input link meta param source track wbr
 ]])
 local default500 = [[<!doctype html><title>{%& status %} {%& reason %}</title>
@@ -139,26 +162,30 @@ local reqapi = { authority = function()
     local parts = ParseUrl(GetUrl())
     return EncodeUrl({scheme = parts.scheme, host = parts.host, port = parts.port})
   end, }
-local function genEnv(isTmplEnv)
+local function genEnv(opt)
+  opt = opt or {}
   return function(t, key)
     local val = reqenv[key] or rawget(t, ref) and rawget(t, ref)[key]
     -- can cache the value, since it's not passed as a parameter
     local cancache = val == nil
-    if val == nil then val = _G[key] end
-    if not isTmplEnv and val == nil and type(key) == "string" then
+    if not opt.request and val == nil then val = _G[key] end
+    if opt.request and val == nil and type(key) == "string" then
       local func = reqapi[key] or _G["Get"..key:sub(1,1):upper()..key:sub(2)]
-      -- map a property (like `.host`) to a function call (`.GetHost()`)
+      -- map a property (like `.host`) to a function call (`GetHost()`)
       if type(func) == "function" then val = func() else val = func end
     end
     -- allow pseudo-tags, but only if used in a template environment;
     -- provide fallback for `table` to make `table{}` and `table.concat` work
     local istable = key == "table"
-    if isTmplEnv and (val == nil or istable) then
+    if opt.autotag and (val == nil or istable) then
       -- nothing was resolved; this is either undefined value or
       -- a pseudo-tag (like `div{}` or `span{}`), so add support for them
       val = setmetatable({key}, {
           -- support the case of printing/concatenating undefined values
-          __concat = function(a, b) return a end,
+          -- tostring handles conversion to a string
+          __tostring = function() return "" end,
+          -- concat handles contatenation with a string
+          __concat = function(a, _) return a end,
           __index = (istable and table or nil),
           __call = function(t, v, ...)
             if type(v) == "table" then
@@ -173,8 +200,9 @@ local function genEnv(isTmplEnv)
     return val
   end
 end
-local templateHandlerEnv = {__index = genEnv(true) }
-local requestHandlerEnv = {__index = genEnv(false) }
+local tmplTagHandlerEnv = {__index = genEnv({autotag = true}) }
+local tmplRegHandlerEnv = {__index = genEnv() }
+local tmplReqHandlerEnv = {__index = genEnv({request = true}) }
 local req
 local function getRequest() return req end
 local function detectType(s)
@@ -187,6 +215,9 @@ local function serveResponse(status, headers, body)
   if type(headers) == "string" and body == nil then
     body, headers = headers, nil
   end
+  if type(status) == "string" and body == nil and headers == nil then
+    body, status = status, 200
+  end
   argerror(type(status) == "number", 1, "(number expected)")
   argerror(not headers or type(headers) == "table", 2, "(table expected)")
   argerror(not body or type(body) == "string", 3, "(string expected)")
@@ -198,7 +229,7 @@ local function serveResponse(status, headers, body)
       r.headers = setmetatable(headers, getmetatable(r.headers))
     end
     if body then Write(body) end
-    return true, body and #body > 0 and detectType(body)
+    return true
   end
 end
 
@@ -215,14 +246,14 @@ local function render(name, opt)
   for k, v in pairs(rawget(env, ref) or {}) do params[k] = v end
   -- add "passed" template parameters
   for k, v in pairs(opt or {}) do params[k] = v end
-  Log(kLogInfo, logFormat("render template '%s'", name))
+  LogDebug("render template '%s'", name)
   -- return template results or an empty string to indicate completion
   -- this is useful when the template does direct write to the output buffer
   local refcopy = env[ref]
   env[ref] = params
-  local res = templates[name].handler(opt) or ""
+  local res, more = templates[name].handler(opt)
   env[ref] = refcopy
-  return res, templates[name].ContentType
+  return res or "", more or templates[name].ContentType
 end
 
 local function setTemplate(name, code, opt)
@@ -235,7 +266,8 @@ local function setTemplate(name, code, opt)
       for _, path in ipairs(paths) do
         local tmplname, ext = path:gsub("^"..prefix.."/?",""):match("(.+)%.(%w+)$")
         if ext and name[ext] then
-          setTemplate(tmplname, {type = name[ext], LoadAsset(path)})
+          setTemplate(tmplname, {type = name[ext],
+              LoadAsset(path) or error("Can't load asset: "..path)})
         end
       end
     end
@@ -247,13 +279,17 @@ local function setTemplate(name, code, opt)
   local ctype = type(code)
   argerror(ctype == "string" or ctype == "function", 2, "(string, table or function expected)")
   LogVerbose("set template '%s'", name)
+  local tmpl = templates[params.type or "fmt"]
   if ctype == "string" then
-    local tmpl = templates[params.type or "fmt"]
     argerror(tmpl ~= nil, 2, "(unknown template type/name)")
     argerror(tmpl.parser ~= nil, 2, "(referenced template doesn't have a parser)")
     code = assert(load(tmpl.parser(code), code))
   end
-  local env = setmetatable({render = render, [ref] = opt}, templateHandlerEnv)
+  local env = setmetatable({render = render, [ref] = opt},
+    -- get the metatable from the template that this one is based on,
+    -- to make sure the correct environment is being served
+    tmpl and getmetatable(getfenv(tmpl.handler)) or
+    (opt or {}).autotag and tmplTagHandlerEnv or tmplRegHandlerEnv)
   params.handler = setfenv(code, env)
   templates[name] = params
 end
@@ -286,9 +322,9 @@ local function route2regex(route)
         return pat:gsub("%%(.)", findset)..sep..rest end)
   -- mark optional captures, as they are going to be returned during match
   local subnum = 1
-  local s, e, capture = 0
+  local s, _, capture = 0
   while true do
-    s, e, capture = regex:find("%b()([?]?)", s+1)
+    s, _, capture = regex:find("%b()([?]?)", s+1)
     if not s then break end
     if capture > "" then table.insert(params, subnum, false) end
     subnum = subnum + 1
@@ -343,7 +379,7 @@ local function setRoute(opts, handler)
           v.HEAD = v.GET
         end
         if v.regex then v.regex = re.compile(v.regex) or argerror(false, 3, "(valid regex expected)") end
-      elseif headers[k] then
+      elseif headerMap[k] then
         opts[k] = {pattern = "%f[%w]"..v.."%f[%W]"}
       end
     end
@@ -399,7 +435,7 @@ end
 
 local function matchRoute(path, req)
   assert(type(req) == "table", "bad argument #2 to match (table expected)")
-  LogVerbose("match %d route(s) against '%s'", #routes, path)
+  LogDebug("match %d route(s) against '%s'", #routes, path)
   local matchedRoutes = {}
   for idx, route in ipairs(routes) do
     -- skip static routes that are only used for path generation
@@ -407,8 +443,7 @@ local function matchRoute(path, req)
     if route.handler or opts and opts.otherwise then
       local res = {route.comp:search(path)}
       local matched = table.remove(res, 1)
-      ;(matched and LogInfo or LogVerbose)
-        ("route '%s' %smatched", route.route, matched and "" or "not ")
+      LogDebug("route '%s' %smatched", route.route, matched and "" or "not ")
       if matched then -- path matched
         table.insert(matchedRoutes, idx)
         for ind, val in ipairs(route.params) do
@@ -420,16 +455,29 @@ local function matchRoute(path, req)
         if opts and next(opts) then
           for filter, cond in pairs(opts) do
             if filter ~= "otherwise" then
-              local header = headers[filter]
+              local header = headerMap[filter]
               -- check "dashed" headers, params, properties (method, port, host, etc.), and then headers again
-              local value = (header and req.headers[header]
+              local value = (filter == "r" and req  -- special request value
+                or header and req.headers[header]  -- an existing header
                 or req.params[filter] or req[filter] or req.headers[filter])
               -- condition can be a value (to compare with) or a table/hash with multiple values
-              if not matchCondition(value, cond) then
+              local resCond, err = matchCondition(value, cond)
+              if not resCond then
                 otherwise = type(cond) == "table" and cond.otherwise or opts.otherwise
+                LogDebug("route '%s' filter '%s%s' didn't match value '%s'%s",
+                  route.route, filter, type(cond) == "string" and "="..cond or "",
+                  value, tonumber(otherwise) and " and returned "..otherwise or "")
+                if otherwise then
+                  if type(otherwise) == "function" then
+                    return otherwise(err, value)
+                  else
+                    if otherwise == 405 and not req.headers.Allow then
+                      req.headers.Allow = getAllowedMethod(matchedRoutes)
+                    end
+                    return serveResponse(otherwise)
+                  end
+                end
                 matched = false
-                Log(kLogInfo, logFormat("route '%s' filter '%s' didn't match value '%s'%s",
-                    route.route, filter, value, tonumber(otherwise) and " and returned "..otherwise or ""))
                 break
               end
             end
@@ -438,22 +486,148 @@ local function matchRoute(path, req)
         if matched and route.handler then
           local res, more = route.handler(req)
           if res then return res, more end
-        else
-          if otherwise then
-            if type(otherwise) == "function" then
-              return otherwise()
-            else
-              if otherwise == 405 and not req.headers.Allow then
-                req.headers.Allow = getAllowedMethod(matchedRoutes)
-              end
-              return serveResponse(otherwise)
-            end
-          end
         end
       end
     end
   end
 end
+
+--[[-- scheduling engine --]]--
+
+local function expand(min, max, vals)
+  local tbl = {MIN = min, MAX = max, ['*'] = min.."-"..max}
+  for i = min, max do
+    tbl[i] = vals and vals[i] or ("%02d"):format(i)
+  end
+  for k, v in pairs(vals or {}) do tbl[v] = k end
+  return tbl
+end
+local expressions = { expand(0,59), expand(0,23), expand(1,31),
+  expand(1,12, {"jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"}),
+  expand(0,7, {[0]="sun","mon","tue","wed","thu","fri","sat","sun"}),
+}
+local function cron2hash(rec)
+  local cronrec = {rec:lower():match("%s*(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s*")}
+  local tbl = {{},{},{},{},{}}
+  if #cronrec ~= #tbl then return nil, "invalid format" end
+  for exppos, exps in ipairs(cronrec) do
+    local map = expressions[exppos]
+    for e in exps:gmatch("([^,]+)") do
+      local exp = e:gsub("[^%d%-/]+", map)
+      local min, rng, max, step = exp:match("^(%d+)(%-?)(%d*)/?(%d*)$")
+      if not min then max, step = exp:match("^%-(%d+)/?(%d*)$") end
+      if not min and not max then return nil, "invalid expression: "..e end
+      min = math.max(map.MIN, tonumber(min) or map.MIN)
+      max = math.min(map.MAX, tonumber(max) or #rng==0 and min or map.MAX)
+      step = tonumber(step) or 1
+      for i = min, max, step do tbl[exppos][map[i]] = true end
+    end
+  end
+  return tbl
+end
+
+local schedules, lasttime, runSchedule = {}, 0
+local function checkSchedule(time, sameproc)
+  local times = FormatHttpDateTime(time)
+  local dow, dom, mon, h, m = times:lower():match("^(%S+), (%S+) (%S+) %S+ (%S+):(%S+):")
+  for _, v in pairs(schedules) do
+    local cront, func = v[1], v[2]
+    if cront[1][m] and cront[2][h] and cront[3][dom] and cront[4][mon] and cront[5][dow] then
+      if sameproc or assert(unix.fork()) == 0 then
+        local ok, err = pcall(func)
+        if not ok then LogWarn("scheduled task failed: "..err) end
+        if not sameproc then unix.exit(0) end
+      end
+    end
+  end
+end
+local function setSchedule(exp, func)
+  local res, err = cron2hash(exp)
+  argerror(res ~= nil, 1, err)
+  schedules[exp] = {res, func}
+  runSchedule = runSchedule or function()
+    local time = math.floor(GetTime()/60)*60
+    if time == lasttime then return else lasttime = time end
+    checkSchedule(time)
+  end
+end
+
+--[[-- filters --]]--
+
+local function makeLastModified(asset)
+  argerror(type(asset) == "string", 1, "(string expected)")
+  local lastModified = GetLastModifiedTime(asset)
+  return {
+    function(ifModifiedSince)
+      local isModified = (not ifModifiedSince or
+        ParseHttpDateTime(ifModifiedSince) < lastModified)
+      if isModified then
+        getRequest().headers.LastModified = FormatHttpDateTime(lastModified)
+      end
+      return isModified
+    end,
+    otherwise = 304,  -- serve 304 if not modified
+  }
+end
+
+local trueval = function() return true end
+local validators = { msg = trueval, optional = trueval,
+  minlen = function(s, num) return #tostring(s or "") >= num, "%s is shorter than "..num.." chars" end,
+  maxlen = function(s, num) return #tostring(s or "") <= num, "%s is longer than "..num.." chars" end,
+  pattern = function(s, pat) return tostring(s or ""):match(pat), "invalid %s format" end,
+  test = function(s, fun) return fun(s) end,
+  oneof = function(s, list)
+    if type(list) ~= "table" then list = {list} end
+    for _, v in ipairs(list) do if s == v then return true end end
+    return nil, "%s must be one of: "..table.concat(list, ", ")
+  end,
+}
+local function makeValidator(rules)
+  argerror(type(rules) == "table", 1, "(table expected)")
+  for i, rule in ipairs(rules) do
+    argerror(type(rule) == "table", 1, "(table expected at position "..i..")")
+    argerror(type(rule[1]) == "string", 1, "(rule with name expected at position "..i..")")
+    argerror(not rule.test or type(rule.test) == "function", 1, "(rule with test as function expected at position "..i..")")
+  end
+  return setmetatable({
+      function(val)
+        -- validator can be called in three ways:
+        -- (1) directly with a params-like table passed
+        -- (2) as a filter on an existing (scalar) field
+        -- (3) as a filter on an non-existing field (to get request.params table)
+        if val == nil then val = getRequest().params end  -- case (3)
+        if type(val) ~= "table" and #rules > 0 then  -- case (2)
+          -- convert the passed value into a hash based on the name in the first rule
+          val = {[rules[1][1]] = val}
+        end
+        local errors = {}
+        for _, rule in ipairs(rules) do repeat
+          local param, err = rule[1], rule.msg
+          local value = val[param]
+          if value == nil and rule.optional == true then break end  -- continue
+          for checkname, checkval in pairs(rule) do
+            if type(checkname) == "string" then
+              local validator = validators[checkname]
+              if not validator then argerror(false, 1, "unknown validator "..checkname) end
+              local success, msg = validator(value, checkval)
+              if not success then
+                local key = rules.key and param or #errors+1
+                local errmsg = (err or msg or "%s check failed"):format(param)
+                errors[key] = errors[key] or errmsg
+                if not rules.all then
+                  -- report an error as a single message, unless key is asked for
+                  return nil, rules.key and errors or errmsg
+                end
+              end
+            end
+          end
+        until true end
+        if #errors > 0 or next(errors) then return nil, errors end
+        return true
+      end,
+      otherwise = rules.otherwise,
+      }, {__call = function(t, r) return t[1](r) end})
+  end
 
 --[[-- security --]]--
 
@@ -467,12 +641,39 @@ local function makeBasicAuth(authtable, opts)
     function(authorization)
       if not authorization then return false end
       local pass, user = GetPass(), GetUser()
-      return pass and user and authtable[user] == (
-        hash and GetCryptoHash(hash:upper(), pass, key) or pass)
+      if not pass or not user or not authtable[user] then return false end
+      if hash:upper() == "ARGON2" then return argon2.verify(authtable[user], pass) end
+      return authtable[user] == (hash and GetCryptoHash(hash:upper(), pass, key) or pass)
     end,
     -- if authentication is not present or fails, return 401
     otherwise = serveResponse(401, {WWWAuthenticate = "Basic" .. realm}),
   }
+end
+
+local function makeIpMatcher(list)
+  if type(list) == "string" then list = {list} end
+  argerror(type(list) == "table", 1, "(table or string expected)")
+  local subnets = {}
+  for _, ip in ipairs(list) do
+    local v, neg = ip:gsub("^!","")
+    local addr, mask = v:match("^(%d+%.%d+%.%d+%.%d+)/(%d+)$")
+    if not addr then addr, mask = v, 32 end
+    addr = ParseIp(addr)
+    argerror(addr ~= -1, 1, ("(invalid IP address %s)"):format(ip))
+    mask = tonumber(mask)
+    argerror(mask and mask >= 0 and mask <=32, 1, ("invalid mask in %s"):format(ip))
+    mask = ~0 << (32 - mask)
+    -- apply mask to addr in case addr/subnet is not properly aligned
+    table.insert(subnets, {addr & mask, mask, neg > 0})
+  end
+  return function(ip)
+    if ip == -1 then return false end -- fail the check on invalid IP
+    for _, v in ipairs(subnets) do
+      local match = v[1] == (ip & v[2])
+      if match then return not v[3] end
+    end
+    return false
+  end
 end
 
 --[[-- core engine --]]--
@@ -484,97 +685,19 @@ local function error2tmpl(status, reason, message)
     {status = status, reason = reason, message = message})
   return ok and res or ServeError(status, reason) or true
 end
--- call the handler and handle any Lua error by returning Server Error
-local function hcall(func, ...)
-  local ok, res, more = xpcall(func, debug.traceback, ...)
-  if ok then return res, more end
-  local err = res:gsub("\n[^\n]*in function 'xpcall'\n", "\n")
-  Log(kLogError, logFormat("Lua error: %s", err))
-  return error2tmpl(500, nil, IsLoopbackIp(GetRemoteAddr()) and err or nil)
-end
-
-local function handleRequest(path)
-  path = path or GetPath()
-  req = setmetatable({
-      params = setmetatable({}, {__index = function(_, k)
-            if not HasParam(k) then return end
-            -- GetParam may return `nil` for empty parameters,
-            -- like `foo` in `foo&bar=1`, but need to return `false` instead
-            return GetParam(k) or false
-          end}),
-      -- check headers table first to allow using `.ContentType` instead of `["Content-Type"]`
-      headers = setmetatable({}, {__index = function(_, k) return GetHeader(headers[k] or k) end}),
-      cookies = setmetatable({}, {__index = function(_, k) return GetCookie(k) end}),
-    }, requestHandlerEnv)
-  SetStatus(200) -- set default status; can be reset later
-  -- find a match and handle any Lua errors in handlers
-  local res, conttype = hcall(matchRoute, path, req)
-  -- execute the (deferred) function and handle any errors
-  while type(res) == "function" do res, conttype = hcall(res) end
-  local tres = type(res)
-  if res == true then
-    -- do nothing, as this request was already handled
-  elseif not res then
-    -- this request wasn't handled, so report 404
-    return error2tmpl(404) -- use 404 template if available
-  elseif tres == "string" then
-    if #res > 0 then
-      if not conttype then conttype = detectType(res) end
-      Write(res) -- output content as is
-    end
-  else
-    LogWarn("unexpected result from action handler: `%s` (%s)", tostring(res), tres)
-  end
-  -- set the content type returned by the render
-  if conttype and not rawget(req.headers or {}, "ContentType") then
-    req.headers.ContentType = conttype
-  end
-  -- output any headers and cookies that have been specified
-  for name, value in pairs(req.headers or {}) do
-    if type(value) ~= "string" then
-      LogWarn("header '%s' is assigned non-string value '%s'", name, tostring(value))
-    end
-    SetHeader(headers[name] or name, tostring(value))
-  end
-  for name, value in pairs(req.cookies or {}) do
-    if type(value) == "table" then
-      SetCookie(name, value[1], value)
-    else
-      SetCookie(name, value)
-    end
-  end
-end
-
-local tests -- forward declaration
-local function run(opt)
-  opt = opt or {}
-  if opt.tests and tests then tests(); os.exit() end
-  ProgramBrand(("%s/%s %s/%s"):format("redbean", getRBVersion(), NAME, VERSION))
-  for key, v in pairs(opt) do
-    if key == "headers" and type(v) == "table" then
-      for h, val in pairs(v) do ProgramHeader(headers[h] or h, val) end
-    else
-      local func = _G["Program"..key:sub(1,1):upper()..key:sub(2)]
-      argerror(type(func) == "function", 1, ("(unknown option '%s' with value '%s')"):format(key, v))
-      for _, val in pairs(type(v) == "table" and v or {v}) do func(val) end
-    end
-  end
-  if GetLogLevel then
-    local level, none = GetLogLevel(), function() end
-    if level < kLogWarn then LogWarn = none end
-    if level < kLogVerbose then LogVerbose = none end
-    if level < kLogInfo then LogInfo = none end
-  end
-  -- assign Redbean handler to execute on each request
-  OnHttpRequest = function() return handleRequest(GetPath()) end
-end
-
 local function checkPath(path) return type(path) == "string" and path or GetPath() end
 local fm = setmetatable({ _VERSION = VERSION, _NAME = NAME, _COPYRIGHT = "Paul Kulchenko",
+  getBrand = function() return ("%s/%s %s/%s"):format("redbean", getRBVersion(), NAME, VERSION) end,
   setTemplate = setTemplate, setRoute = setRoute,
-  makePath = makePath, makeUrl = makeUrl, makeBasicAuth = makeBasicAuth,
-  getAsset = LoadAsset,
-  run = run, render = render,
+  setSchedule = setSchedule,
+  makePath = makePath, makeUrl = makeUrl,
+  makeBasicAuth = makeBasicAuth, makeIpMatcher = makeIpMatcher,
+  makeLastModified = makeLastModified, makeValidator = makeValidator,
+  getAsset = LoadAsset, getRequest = getRequest,
+  render = render,
+  -- options
+  cookieOptions = {HttpOnly = true, SameSite = "Strict"},
+  sessionOptions = {name = "fullmoon_session", hash = "SHA256", secret = true, format = "lua"},
   -- serve* methods that take path can be served as a route handler (with request passed)
   -- or as a method called from a route handler (with the path passed);
   -- serve index.lua or index.html if available; continue if not
@@ -583,7 +706,9 @@ local fm = setmetatable({ _VERSION = VERSION, _NAME = NAME, _COPYRIGHT = "Paul K
   servePath = function(path) return function() return RoutePath(checkPath(path)) end end,
   -- return asset (de/compressed) along with checking for asset range and last/not-modified
   serveAsset = function(path) return function() return ServeAsset(checkPath(path)) end end,
-  serveError = function(status, reason) return function() return error2tmpl(status, reason) end end,
+  serveError = function(status, reason, msg)
+    return function() return error2tmpl(status, reason, msg) end
+  end,
   serveContent = function(tmpl, params) return function() return render(tmpl, params) end end,
   serveRedirect = function(loc, status) return function()
       -- if no status or location is specified, then redirect to the original URL with 303
@@ -604,13 +729,257 @@ local fm = setmetatable({ _VERSION = VERSION, _NAME = NAME, _COPYRIGHT = "Paul K
     end
     -- handle serve204 and similar calls
     local serveStatus = key:match("^serve(%d%d%d)$")
-    if serveStatus then return cache(t.serveResponse(tonumber(serveStatus))) end
+    if serveStatus then return cache(t.serveError(tonumber(serveStatus))) end
     -- handle logVerbose and other log calls
-    local kVal = _G[key:gsub("^l(og%w*)$", function(name) return "kL"..name end)]
+    local kVal = not _G[key] and _G[key:gsub("^l(og%w*)$", function(name) return "kL"..name end)]
     if kVal then return cache(function(...) return Log(kVal, logFormat(...)) end) end
     -- return upper camel case version if exists
-    return cache(_G[key:sub(1,1):upper()..key:sub(2)])
+    return cache(_G[key] or _G[key:sub(1,1):upper()..key:sub(2)])
   end})
+
+local isfresh = {} -- some unique key value
+local function deleteCookie(name, copts)
+  local maxage, MaxAge = copts.maxage, copts.MaxAge
+  copts.maxage, copts.MaxAge = 0, nil
+  SetCookie(name, "", copts)
+  copts.maxage, copts.MaxAge = maxage, MaxAge
+end
+local function getSessionOptions()
+  local sopts = fm.sessionOptions or {}
+  if not sopts.name then error("missing session name") end
+  if not sopts.hash then error("missing session hash") end
+  if not sopts.format then error("missing session format") end
+  -- check for session secret and hash
+  if sopts.secret and type(sopts.secret) ~= "string" then
+    error("sessionOptions.secret is expected to be a string")
+  end
+  return sopts
+end
+local function setSession(session)
+  -- if the session hasn't been touched (read or updated), do nothing
+  if session and session[isfresh] then return end
+  local sopts = getSessionOptions()
+  local cookie
+  if session and next(session) then
+    local msg = EncodeBase64(EncodeLua(session))
+    local sig = EncodeBase64(
+      GetCryptoHash(sopts.hash, msg, sopts.secret or ""))
+    cookie = msg.."."..sopts.format.."."..sopts.hash.."."..sig
+  end
+  local copts = fm.cookieOptions or {}
+  if cookie then
+    SetCookie(sopts.name, cookie, copts)
+  else
+    fm.logDebug("delete session cookie")
+    deleteCookie(sopts.name, copts)
+  end
+end
+local function getSession()
+  local sopts = getSessionOptions()
+  local session = GetCookie(sopts.name)
+  if not session then return {} end
+  local msg, format, hash, sig = session:match("(.-)%.(.-)%.(.-)%.(.+)")
+  if not msg then return {} end
+  if not pcall(GetCryptoHash, hash, "") then
+    LogWarn("invalid session crypto hash: "..hash)
+    return {}
+  end
+  if DecodeBase64(sig) ~= GetCryptoHash(hash, msg, sopts.secret) then
+    LogWarn("invalid session signature: "..sig)
+    return {}
+  end
+  if format ~= "lua" then
+    LogWarn("invalid session format: "..format)
+    return {}
+  end
+  local ok, val = loadsafe("return "..DecodeBase64(msg))
+  if not ok then LogWarn("invalid session content: "..val) end
+  return ok and val or {}
+end
+local function setHeaders(headers)
+  for name, value in pairs(headers or {}) do
+    local val = tostring(value)
+    if type(value) ~= "string" and type(value) ~= "number" then
+      LogWarn("header '%s' is assigned non-string value '%s'", name, val)
+    end
+    local hname = headerMap[name] or name
+    local noheader = noHeaderMap[hname:lower()]
+    if not noheader or val:lower() == noheader then
+      SetHeader(hname, val)
+    else
+      LogDebug("header '%s' with value '%s' is skipped to avoid conflict", name, val)
+    end
+  end
+end
+local function setCookies(cookies)
+  local copts = fm.cookieOptions or {}
+  for cname, cvalue in pairs(cookies or {}) do
+    local value, opts = cvalue, copts
+    if type(cvalue) == "table" then
+      value, opts = cvalue[1], cvalue
+    end
+    if value == false then
+      deleteCookie(cname, opts)
+    else
+      SetCookie(cname, value, opts)
+    end
+  end
+end
+
+-- call the handler and handle any Lua error by returning Server Error
+local function hcall(func, ...)
+  local co = type(func) == "thread" and func or coroutine.create(func)
+  local ok, res, more = coroutine.resume(co, ...)
+  if ok then
+    return coroutine.status(co) == "suspended" and co or false, res, more
+  end
+  local err = debug.traceback(co, res)
+  Log(kLogError, logFormat("Lua error: %s", err))
+  return false, error2tmpl(500, nil, IsLoopbackIp(GetRemoteAddr()) and err or nil)
+end
+local function handleRequest(path)
+  path = path or GetPath()
+  req = setmetatable({
+      params = setmetatable({}, {__index = function(_, k)
+            if not HasParam(k) then return end
+            -- GetParam may return `nil` for empty parameters,
+            -- like `foo` in `foo&bar=1`, but need to return `false` instead
+            if not string.find(k, "%[%]$") then return GetParam(k) or false end
+            local array={}
+            for _, v in ipairs(GetParams()) do
+              if v[1] == k then table.insert(array, v[2] or false) end
+            end
+            return array
+          end}),
+      -- check headers table first to allow using `.ContentType` instead of `["Content-Type"]`
+      headers = setmetatable({}, {__index = function(_, k) return GetHeader(headerMap[k] or k) end}),
+      cookies = setmetatable({}, {__index = function(_, k) return GetCookie(k) end}),
+      session = setmetatable({[isfresh] = true}, {
+          __index = function(t, k)
+            if t[isfresh] == true then t[isfresh] = getSession() end
+            return t[isfresh] and t[isfresh][k]
+          end,
+          __newindex = function(t, k, v)
+            if t[isfresh] then
+              -- copy the already processed table if available
+              req.session = type(t[isfresh]) == "table" and t[isfresh] or getSession()
+            end
+            req.session[k] = v
+          end,
+        }),
+    }, tmplReqHandlerEnv)
+  SetStatus(200) -- set default status; can be reset later
+  -- find a match and handle any Lua errors in handlers
+  local co, res, conttype = hcall(matchRoute, path, req)
+  -- execute the (deferred) function and handle any errors
+  while type(res) == "function" do co, res, conttype = hcall(res) end
+  local tres = type(res)
+  if res == true then
+    -- do nothing, as this request was already handled
+  elseif not res and not co then
+    -- this request wasn't handled, so report 404
+    return error2tmpl(404) -- use 404 template if available
+  elseif tres == "string" then
+    if #res > 0 then
+      if not conttype then conttype = detectType(res) end
+      Write(res) -- output content as is
+    end
+  elseif not co then
+    LogWarn("unexpected result from action handler: '%s' (%s)", tostring(res), tres)
+  end
+  -- set the content type returned by the render
+  if (type(conttype) == "string"
+    and not rawget(req.headers or {}, "ContentType")) then
+    req.headers.ContentType = conttype
+  end
+  -- set the headers as returned by the render
+  if type(conttype) == "table" then
+    if not req.headers then req.headers = {} end
+    for name, value in pairs(conttype) do req.headers[name] = value end
+  end
+  setHeaders(req.headers) -- output specified headers
+  setCookies(req.cookies) -- output specified cookies
+  setSession(req.session) -- add a session cookie if needed
+  while co do
+    coroutine.yield()
+    co, res = hcall(co)
+    -- if the function is returned, which may happen if serve* is used
+    -- as the last call, then process it to get its result
+    while type(res) == "function" do co, res = hcall(res) end
+    if type(res) == "string" then Write(res) end
+  end
+end
+
+local function streamWrap(func)
+  return function(...) return coroutine.yield(func(...)()) or true end
+end
+fm.streamResponse = streamWrap(fm.serveResponse)
+fm.streamContent = streamWrap(fm.serveContent)
+
+local tests -- forward declaration
+local function run(opts)
+  opts = opts or {}
+  if opts.tests and tests then tests(); os.exit() end
+  ProgramBrand(fm.getBrand())
+  -- configure logPath first to capture all subsequent messages
+  -- in the log file, as the order is randomized otherwise
+  local logpath = opts.logPath or opts.LogPath
+  if logpath then ProgramLogPath(logpath) end
+  for key, v in pairs(opts) do
+    if key == "headers" and type(v) == "table" then
+      for h, val in pairs(v) do ProgramHeader(headerMap[h] or h, val) end
+    elseif key:find("Options$") and type(v) == "table" then
+      -- if *Options is assigned, then overwrite the provided default
+      if fm[key] then
+        fm[key] = opts[key]
+      else -- if there is no default, it's some wrong option
+        argerror(false, 1, ("(unknown option '%s')"):format(key))
+      end
+    else
+      local name = "Program"..key:sub(1,1):upper()..key:sub(2)
+      if name ~= "ProgramLogPath" then  -- this is already handled earlier
+        local func = _G[name]
+        argerror(type(func) == "function", 1,
+          ("(unknown option '%s' with value '%s')"):format(key, v))
+        for _, val in pairs(type(v) == "table" and v or {v}) do func(val) end
+      end
+    end
+  end
+  if GetLogLevel then
+    local level, none = GetLogLevel(), function() end
+    if level < kLogWarn then LogWarn = none end
+    if level < kLogInfo then LogInfo = none end
+    if level < kLogVerbose then LogVerbose = none end
+    if level < kLogDebug then LogDebug = none end
+  end
+  LogInfo("started "..fm.getBrand())
+  local sopts = fm.sessionOptions
+  if sopts.secret == true then
+    sopts.secret = GetRandomBytes(32)
+    LogVerbose("applied random session secret; set `fm.sessionOptions.secret`"
+      ..(" to `fm.decodeBase64('%s')` to continue using this value")
+        :format(EncodeBase64(sopts.secret))
+      .." or to `false` to disable")
+  end
+  if runSchedule then
+    if ProgramHeartbeatInterval then
+      local min = 60*1000
+      if ProgramHeartbeatInterval() > min then ProgramHeartbeatInterval(min) end
+    else
+      LogWarn("OnServerHeartbeat is required for setSchedule to work,"..
+        " but may not be available; you need redbean v2.0.16+.")
+    end
+    local OSH = OnServerHeartbeat  -- save the existing hook if any
+    OnServerHeartbeat = function() runSchedule() if OSH then OSH() end end
+  end
+  -- assign Redbean handler to execute on each request
+  OnHttpRequest = function() handleRequest(GetPath()) end
+
+  collectgarbage() -- clean up no longer used memory to reduce image size
+end
+
+-- assign the rest of the methods
+fm.run = run
 
 Log = Log or function() end
 
@@ -623,7 +992,8 @@ fm.setTemplate("fmt", {
           ..(val ~= EOT -- this is not the suffix
             and (pref == "" -- this is a code fragment
               and val.." "
-              or ("write(%s(%s or ''))"):format(pref == "&" and "escapeHtml" or "", val))
+              or ("write(%s(tostring(%s or '')))")
+                :format(pref == "&" and "escapeHtml" or "", val))
             or "")
         end)
       return tupd
@@ -633,6 +1003,24 @@ fm.setTemplate("fmt", {
 fm.setTemplate("500", default500) -- register default 500 status template
 fm.setTemplate("json", {ContentType = "application/json",
     function(val) return EncodeJson(val, {useoutput = true}) end})
+fm.setTemplate("sse", function(val)
+    argerror(type(val) == "table", 1, "(table expected)")
+    if #val == 0 then val = {val} end
+    for _, event in ipairs(val) do
+      for etype, eval in pairs(event) do
+        Write(("%s: %s\n"):format(
+            etype == "comment" and "" or etype,
+            etype == "data" and eval:gsub("\n", "\ndata: ") or eval
+          ))
+      end
+      Write("\n")
+    end
+    return "", {
+      ContentType = "text/event-stream",
+      CacheControl = "no-store",
+      ["X-Accel-Buffering"] = "no",
+    }
+  end)
 fm.setTemplate("html", {
     parser = function(s)
       return ([[return render("html", %s)]]):format(s)
@@ -675,7 +1063,7 @@ fm.setTemplate("html", {
         if type(opt) == "function" then opt = opt() end
         if type(opt) == "table" then
           local tag = opt[1]
-          if tag == nil then argerror(false, 1, "(tag name expected)") end
+          argerror(tag ~= nil, 1, "(tag name expected)")
           if tag == "include" then return(fm.render(opt[2], opt[3])) end
           if tag == "raw" then
             for i = 2, #opt do writeVal(opt[i], false) end
@@ -692,13 +1080,13 @@ fm.setTemplate("html", {
             Write("<!"..tag.." "..(opt[2] or "html")..">")
             return
           end
-          if getmetatable(opt) and not htmlvoid[tag:lower()] then
+          if getmetatable(opt) and not htmlVoidTags[tag:lower()] then
             LogWarn("rendering '%s' with `nil` value", tag)
             return
           end
           Write("<"..tag)
           writeAttrs(opt)
-          if htmlvoid[tag:lower()] then Write("/>") return end
+          if htmlVoidTags[tag:lower()] then Write("/>") return end
           Write(">")
           local escape = tag ~= "script"
           for i = 2, #opt do writeVal(opt[i], escape) end
@@ -712,7 +1100,7 @@ fm.setTemplate("html", {
       end
       for _, v in pairs(val) do writeVal(v) end
     end,
-  })
+  }, {autotag = true})
 
 --[[-- various tests --]]--
 
@@ -729,7 +1117,15 @@ tests = function()
           return unpack(res)
         end}
       end}
-    EscapeHtml = function(s) return (string.gsub(s, "&", "&amp;"):gsub('"', "&quot;"):gsub("<","&lt;"):gsub(">","&gt;"):gsub("'","&#39;")) end
+    EscapeHtml = function(s)
+      return (string.gsub(s, "&", "&amp;"):gsub('"', "&quot;"):gsub("<","&lt;"):gsub(">","&gt;"):gsub("'","&#39;"))
+    end
+    FormatHttpDateTime = function(s) return os.date("%a, %d %b %Y %X GMT", s) end
+    ParseIp = function(str)
+      local v1, v2, v3, v4 = str:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+      return (v1 and (tonumber(v1) << 24) + (tonumber(v2) << 16) + (tonumber(v3) << 8) + tonumber(v4)
+        or -1) -- match ParseIp logic in redbean
+    end
     reqenv.escapeHtml = EscapeHtml
   end
 
@@ -784,6 +1180,9 @@ tests = function()
   fm.render(tmpl1, {title = "World&"})
   is(out, "Hello, World&amp;!", "text with encoded parameter")
 
+  fm.render(tmpl1, {})
+  is(out, "Hello, !", "text with missing enscaped parameter")
+
   fm.setTemplate(tmpl1, "Hello, {% for i, v in ipairs({3,2,1}) do %}-{%= v %}{% end %}")
   fm.render(tmpl1)
   is(out, "Hello, -3-2-1", "Lua code")
@@ -791,7 +1190,7 @@ tests = function()
   local tmpl2 = "tmpl2"
   fm.setTemplate(tmpl2, [[{a: "{%= title %}"}]])
   fm.render(tmpl2)
-  is(out, '{a: ""}', "JSON with empty local value")
+  is(out, '{a: ""}', "JSON with missing non-escaped parameter")
 
   do
     fm.setTemplate(tmpl2, [[{a: "{%= title %}"}]], {title = "set when adding template"})
@@ -820,10 +1219,17 @@ tests = function()
   is(out, [[Hello, {a: "value"}]], "`include` other template with passed value set at rendering")
 
   fm.setTemplate(tmpl1, "Hello, World!\n{% something.missing() %}")
-  local _, err = pcall(render, tmpl1)
+  local ok, err = pcall(render, tmpl1)
   is(err ~= nil, true, "report Lua error in template")
   is(err:match('string "Hello, World!'), 'string "Hello, World!', "error references original template code")
   is(err:match(':2: '), ':2: ', "error references expected line number")
+
+  fm.setTemplate(tmpl1, "{%if title then%}full{%else%}empty{%end%}")
+  fm.render(tmpl1)
+  is(out, "empty", "`if` checks for an empty parameter")
+
+  fm.render(tmpl1, {title = ""})
+  is(out, "full", "`if` checks for a non-empty parameter")
 
   fm.setTemplate(tmpl1, "Hello, {% main() %}World!", {main = function() end})
   fm.render(tmpl1)
@@ -912,7 +1318,7 @@ tests = function()
     local rp = RoutePath
     local gm = GetAssetMode
 
-    GetAssetMode = function(m) return nil end
+    GetAssetMode = function() return nil end
 
     local status
     SetStatus = function(s) status = s end
@@ -944,10 +1350,10 @@ tests = function()
     RoutePath = rp
   end
 
-  is(headers.CacheControl, "Cache-Control", "Cache-Control header is mapped")
-  is(headers.IfRange, "If-Range", "If-Range header is mapped")
-  is(headers.Host, "Host", "Host header is mapped")
-  is(headers.RetryAfter, "Retry-After", "Retry-After header is mapped")
+  is(headerMap.CacheControl, "Cache-Control", "Cache-Control header is mapped")
+  is(headerMap.IfRange, "If-Range", "If-Range header is mapped")
+  is(headerMap.Host, "Host", "Host header is mapped")
+  is(headerMap.RetryAfter, "Retry-After", "Retry-After header is mapped")
 
   is(detectType("  <"), "text/html", "auto-detect html content")
   is(detectType("{"), "application/json", "auto-detect json content")
@@ -991,6 +1397,21 @@ tests = function()
   is(proute.method, "POST", "POST method on a table sets method")
   is(proute.more, "parameters", "POST method on a table preserves existing conditions")
 
+  --[[-- schedule engine tests --]]--
+
+  section = "(schedule)"
+  do local res={}
+    fm.setSchedule("* * * * *", function() res.everymin = true end)
+    fm.setSchedule("*/2 * * * *", function() res.everyothermin = true end)
+    checkSchedule(1*60, true)
+    is(res.everymin, true, "* is called on minute 1")
+    is(res.everyothermin, nil, "*/2 is not called on minute 1")
+    res={}
+    checkSchedule(2*60, true)
+    is(res.everymin, true, "* is called on minute 2")
+    is(res.everyothermin, true, "*/2 is called on minute 2")
+  end
+
   --[[-- request tests --]]--
 
   -- headers processing (retrieve and set)
@@ -1002,10 +1423,30 @@ tests = function()
   is(r.headers.ContentType, "text/plain", "ContentType header retrieved")
   do local header, value
     SetHeader = function(h,v) header, value = h, v end
+
+    fm.setRoute("/", function(r) r.headers.ContentLength = 42; return true end)
+    handleRequest()
+    is(value, nil, "Content-Length header is not allowed to be set")
+
     fm.setRoute("/", function(r) r.headers.ContentType = "text/plain"; return true end)
     handleRequest()
     is(header, "Content-Type", "Header is remaped to its full name")
     is(value, "text/plain", "Header is set to its correct value")
+
+    fm.setRoute("/", function(r) r.headers.RetryAfter = 5; return true end)
+    handleRequest()
+    is(value, "5", "Header with numeric value is allowed to be set")
+
+    fm.setTemplate(tmpl2, function() return "text", {foo = "bar"} end)
+    fm.setRoute("/", fm.serveContent(tmpl2))
+    handleRequest()
+    is(out, 'text', "template returns text directly")
+    is(header, 'foo', "template returns set of headers (name)")
+    is(value, 'bar', "template returns set of headers (value)")
+
+    fm.setRoute("/", fm.serveContent("sse", {data = "Line 1\nLine 2"}))
+    handleRequest()
+    is(out, "data: Line 1\ndata: Line 2\n\n", "SSE template with data element")
 
     fm.setTemplate(tmpl2, {[[{a: "{%= title %}"}]], ContentType = "application/json"})
     fm.setRoute("/", fm.serveContent(tmpl2))
@@ -1030,7 +1471,7 @@ tests = function()
             div{hx={post="url"}},
             {"script", "a<b"}, p"text",
             table{style=raw"b<a", tr{td"3", td"4", td{table.concat({1,2}, "")}}},
-            table{"more"}, p{notitle.noval}, br,
+            table{"more"}, p{"1"..notitle}, br,
             each{function(v) return p{v} end, {3,2,1}},
             {"div", a = "\"1'", p{"text+", include{"tmpl2", {title = "T"}}}},
             {"iframe", function() return raw{p{1},p{2},p{3}} end},
@@ -1040,7 +1481,7 @@ tests = function()
     is(out, "<!doctype html><body><h1>post title</h1>&lt;!&gt;<!-- --></body>"
       .."<div hx-post=\"url\"></div><script>a<b</script><p>text</p>"
       .."<table style=\"b<a\"><tr><td>3</td><td>4</td><td>12</td></tr></table>"
-      .."<table>more</table><p></p><br/><p>3</p><p>2</p><p>1</p>"
+      .."<table>more</table><p>1</p><br/><p>3</p><p>2</p><p>1</p>"
       .."<div a=\"&quot;1&#39;\"><p>text+{a: \"T\"}</p></div>"
       .."<iframe><p>1</p><p>2</p><p>3</p></iframe>",
       "preset template with html generation")
@@ -1069,6 +1510,10 @@ tests = function()
     handleRequest()
     is(value, "text/html", "explicitly set content-type takes precedence over auto-detected one")
 
+    fm.setRoute("/", fm.serveResponse("response text"))
+    handleRequest()
+    is(out, "response text", "serve response with text only")
+
     fm.setTemplate(tmpl2, {[[no content-type]]})
     fm.setRoute("/", fm.serveContent(tmpl2))
     value = nil
@@ -1086,7 +1531,10 @@ tests = function()
   GetCookie = function() return "cookie value" end
   is(r.cookies.MyCookie, "cookie value", "Cookie value retrieved")
   do local cookie, value, options
-    SetCookie = function(c,v,o) cookie, value, options = c, v, o end
+    SetCookie = function(c,v,o)
+      cookie, value, options = c, v, {}
+      for k,v in pairs(o) do options[k] = v end
+    end
     fm.setRoute("/", function(r) r.cookies.MyCookie = "new value"; return true end)
     handleRequest()
     is(cookie, "MyCookie", "Cookie is processed when set")
@@ -1096,6 +1544,25 @@ tests = function()
     handleRequest()
     is(value, "new value", "Cookie value is set (even with options)")
     is(options.secure, true, "Cookie option is set")
+
+    fm.setRoute("/", function(r) r.cookies.MyCookie = false; return true end)
+    handleRequest()
+    is(cookie, "MyCookie", "Deleted cookie is processed when set to `false` (value)")
+    is(value, "", "Deleted cookie gets empty value (value)")
+    is(options.maxage, 0, "Deleted cookie gets MaxAge set to 0 (value)")
+
+    fm.setRoute("/", function(r) r.cookies.MyCookie = {false, secure = true}; return true end)
+    handleRequest()
+    is(value, "", "Deleted cookie gets empty value (table)")
+    is(options.maxage, 0, "Deleted cookie gets MaxAge set to 0 (table)")
+    is(options.secure, true, "Deleted cookie gets option set (table)")
+
+    if isRedbean then
+      fm.sessionOptions.secret = ""
+      setSession({a=""})
+      is(cookie, "fullmoon_session")
+      is(value, "e2E9IiJ9.lua.SHA256.AYDGTB6O7W4ohlbpRtgvY2NiDFUdS1efkd0ZpROoL+Q=")
+    end
   end
 
   fm.setRoute("/", function(r)
@@ -1163,8 +1630,8 @@ tests = function()
     is(makeUrl({fragment = false}), url:gsub("#frag", ""), "makeUrl removes fragment")
     is(makeUrl("", {path = "/path", params = {{"a", 1}, {"b", 2}, {"c"}}}), "/path?a=1&b=2&c",
       "makeUrl generates path and query string")
-    is(makeUrl("", {params = {a = 1, b = 2, c = true, ["d[1][name]"] = "file" }}),
-      "?a=1&b=2&c&d%5B1%5D%5Bname%5D=file", "makeUrl generates query string from hash table")
+    is(makeUrl("", {params = {a = 1, b = "", c = true, ["d[1][name]"] = "file" }}),
+      "?a=1&b=&c&d%5B1%5D%5Bname%5D=file", "makeUrl generates query string from hash table")
 
     -- test using makeUrl from a template
     -- confirm that the URL is both url (%xx) and html (&...) escaped
@@ -1275,12 +1742,106 @@ tests = function()
   handleRequest()
   is(out, "-false-", "empty existing parameter returns `false`")
 
+  HasParam = function() return true end
+  GetParams = function()
+    return {
+      {"a[]", "10"},
+      {"a[]"},
+      {"a[]", "12"},
+      {"a[]", ""},
+    } end
+  fm.setTemplate(tmpl1, "-{%= a[1]..(a[2] or 'false')..a[3]..a[4] %}-")
+  fm.setRoute("/params/:bar", function(r)
+      return fm.render(tmpl1, {a = r.params["a[]"]})
+    end)
+  handleRequest()
+  is(out, "-10false12-", "parameters with [] are returned as array")
+
+  --[[-- validator tests --]]--
+
+  section = "(validator)"
+  local validator = makeValidator{
+    {"name", minlen=5, maxlen=64, },
+    otherwise = function() end,
+  }
+  is(validator{name = "abcdef"}, true, "valid name is allowed")
+  local res, msg = validator{params = {name = "a"}}
+  is(res, nil, "minlen is checked")
+  is(msg, "name is shorter than 5 chars", "minlen message is reported")
+  is(validator{params = {name = ("a"):rep(100)}}, nil, "maxlen is checked")
+  is(type(validator[1]), "function", "makeValidator returns table with a filter handler")
+  is(type(validator.otherwise), "function", "makeValidator return table with an 'otherwise' handler")
+
+  validator = fm.makeValidator{
+    {"name", msg = "Invalid name format", minlen=5, maxlen=64, },
+    {"pass", minlen=5, maxlen=64, },
+    key = true,
+    all = true,
+  }
+  res, msg = validator{params = {name = "a"}}
+  is(type(msg), "table", "error messages reported in a table")
+  is(msg.name, "Invalid name format", "error message is keyed on parameter name")
+  is(msg.pass, "pass is shorter than 5 chars", "multiple error message are provided when `all=true` is set")
+
+  validator = fm.makeValidator{
+    {"name", msg="Invalid name format", minlen=5, maxlen=64, optional=true, },
+    {"pass", msg="Invalid pass format", minlen=5, maxlen=64, optional=true, },
+    key = true,
+  }
+  res = validator{name = "a"}
+  is(res, nil, "validation fails for invalid optional parameters")
+  res = validator{}
+  is(res, true, "validation passes for missing optional parameters")
+  res, err = validator"a"
+  is(res, nil, "validation fails for invalid scalar parameters")
+  is(err.name, "Invalid name format", "scalar parameters get their name from the first rule")
+
+  res = {notcalled = true}
+  fm.setRoute({"/params/:bar",
+      _ = fm.makeValidator({{"bar", minlen = 5}, all = true,
+          otherwise = function(errors) res.errors = errors end}),
+    }, function() res.notcalled = false end)
+  handleRequest()
+  is(res.notcalled, true, "route action not executed after a failed validator check")
+  is(type(res.errors), "table", "failed validator check triggers `otherwise` processing")
+  is(res.errors[1], "bar is shorter than 5 chars", "`otherwise` processing gets the list of errors")
+
   --[[-- security tests --]]--
 
   section = "(security)"
-  local res = makeBasicAuth({user = "pass"})
+  res = makeBasicAuth({user = "pass"})
   is(type(res[1]), "function", "makeBasicAuth returns table with a filter handler")
-  is(type(res.otherwise), "function", "makeBasicAuth returns table with a 'otherwise' handler")
+  is(type(res.otherwise), "function", "makeBasicAuth returns table with an 'otherwise' handler")
+
+  local matcherTests = {
+    {"0.0.0.0/0", "1.2.3.4", true},
+    {"192.168.2.1", "192.168.2.1", true},
+    {{"!192.168.2.1", "192.168.2.0/30"}, "192.168.2.1", false},
+    {{"!192.168.2.1", "192.168.2.0/30"}, "192.168.3.1", false},
+    {{"!192.168.2.1", "192.168.2.0/30"}, "192.168.2.2", true},
+    {"192.168.2.0/32", "192.168.2.a", false},
+    {"192.168.2.0/32", "192.168.2.1", false},
+    {"192.168.2.0/24", "192.168.2.5", true},
+    {"192.168.2.4/24", "192.168.2.5", true},
+    {"10.10.20.0/30", "10.10.20.3", true},
+    {"10.10.20.0/30", "10.10.20.5", false},
+    {"10.10.20.4/30", "10.10.20.5", true},
+  }
+  for n, test in ipairs(matcherTests) do
+    local mask, ip, res = unpack(test)
+    is(makeIpMatcher(mask)(ParseIp(ip)), res,
+      ("makeIpMatcher %s (%d/%d)"):format(ip, n, #matcherTests))
+  end
+
+  local privateMatcher = makeIpMatcher(
+    {"192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"})
+  for val, res in pairs(
+    {["192.168.0.1"] = true, ["172.16.0.1"] = true,
+      ["10.0.0.1"] = true, ["100.1.1.1"] = false}) do
+    local ip = ParseIp(val)
+    is(privateMatcher(ip), res,
+      ("makeIpMatcher for private ip %s"):format(val))
+  end
 
   --[[-- redbean tests --]]--
 
@@ -1288,6 +1849,7 @@ tests = function()
     section = "(log)"
     is(type(fm.logVerbose), "function", "logVerbose is a (dynamic) method")
     is(type(fm.logInfo), "function", "logInfo is a (dynamic) method")
+    is(type(fm.kLogVerbose), "number", "kLogVerbose is a valid number")
 
     section = "(redbean)"
     is(type(fm.fetch), "function", "fetch function is available")
@@ -1300,16 +1862,24 @@ tests = function()
 
   section = "(run)"
   local addr, brand, port, header, value = ""
-  GetRedbeanVersion = function() return 0x010000 end
+  GetRedbeanVersion = function() return 0x020103 end
   ProgramBrand = function(b) brand = b end
   ProgramPort = function(p) port = p end
   ProgramAddr = function(a) addr = addr.."-"..a end
   ProgramHeader = function(h,v) header, value = h, v end
-  run({port = 8081, addr = {"abc", "def"}, headers = {RetryAfter = "bar"}})
-  is(brand:match("redbean/[.%d]+"), "redbean/1.0", "brand captured server version")
+  fm.sessionOptions.secret = false -- disable secret message warning
+  run{port = 8081, addr = {"abc", "def"}, headers = {RetryAfter = "bar"}}
+  is(brand:match("redbean/[.%d]+"), "redbean/2.1.3", "brand captured server version")
   is(port, 8081, "port is set when passed")
   is(addr, "-abc-def", "multiple values are set from a table")
   is(header..":"..value, "Retry-After:bar", "default headers set when passed")
+
+  ok, err = pcall(run, {cookieOptions = {}}) -- reset cookie options
+  is(ok, true, "run accepts valid options")
+
+  ok, err = pcall(run, {invalidOptions = {}}) -- some invalid option
+  is(ok, false, "run fails on invalid options")
+  is(err:match("unknown option"), "unknown option", "run reports unknown option")
 
   done()
 end

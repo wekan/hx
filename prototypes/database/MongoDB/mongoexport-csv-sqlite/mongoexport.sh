@@ -1,6 +1,5 @@
 rm wekan.sqlite *.csv
 
-mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 mongoexport --db=wekan --collection=accountSettings --type=csv --fieldFile=accountSettings-fields.txt --out=accountSettings.csv
 mongoexport --db=wekan --collection=actions --type=csv --fieldFile=actions-fields.txt --out=actions.csv
 mongoexport --db=wekan --collection=activities --type=csv --fieldFile=activities-fields.txt --out=activities.csv
@@ -15,6 +14,9 @@ mongoexport --db=wekan --collection=cfs_gridfs.attachments.files --type=csv --fi
 mongoexport --db=wekan --collection=cfs_gridfs.avatars.files --type=csv --fieldFile=cfs_gridfs.avatars.files-fields.txt --out=cfs_gridfs.avatars.files.csv
 mongoexport --db=wekan --collection=boards --type=csv --fieldFile=boards-fields.txt --out=boards.csv
 mongoexport --db=wekan --collection=cards --type=csv --fieldFile=cards-fields.txt --out=cards.csv
+mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
+mongoexport --db=wekan --collection=card_comment_reactions --type=csv --fieldFile=card_comment_reactions-fields.txt --out=card_comment_reactions.csv
+mongoexport --db=wekan --collection=card_comments --type=csv --fieldFile=card_comments-fields.txt --out=card_comments.csv
 
 echo ".mode csv
 .import accountSettings.csv accountSettings
@@ -31,5 +33,7 @@ echo ".mode csv
 .import cfs_gridfs.avatars.files.csv cfs_gridfs.avatars.files
 .import boards.csv boards
 .import cards.csv cards
+.import card_comments.csv card_comments
+.import card_comment_reactions.csv card_comment_reactions
 .import users.csv users
 .quit" | sqlite3 wekan.sqlite

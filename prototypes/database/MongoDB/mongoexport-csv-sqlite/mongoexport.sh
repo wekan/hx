@@ -36,8 +36,8 @@ mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.tx
 mongoexport --db=wekan --collection=esCounts --type=csv --fieldFile=esCounts-fields.txt --out=esCounts.csv
 mongoexport --db=wekan --collection=meteor_accounts_loginServiceConfiguration --type=csv --fieldFile=meteor_accounts_loginServiceConfiguration-fields.txt --out=meteor_accounts_loginServiceConfiguration.csv
 mongoexport --db=wekan --collection=meteor-migrations --type=csv --fieldFile=meteor-migrations-fields.txt --out=meteor-migrations.csv
-mongoexport --db=wekan --collection=presences --type=csv --fieldFile=presences.txt --out=presences.csv
-mongoexport --db=wekan --collection=sessiondata --type=csv --fieldFile=sessiondata.txt --out=sessiondata.csv
+mongoexport --db=wekan --collection=presences --type=csv --fieldFile=presences-fields.txt --out=presences.csv
+mongoexport --db=wekan --collection=sessiondata --type=csv --fieldFile=sessiondata-fields.txt --out=sessiondata.csv
 
 echo ".mode csv
 .import accountSettings.csv accountSettings

@@ -23,6 +23,7 @@ mongoexport --db=wekan --collection=impersonatedUsers --type=csv --fieldFile=imp
 mongoexport --db=wekan --collection=integrations --type=csv --fieldFile=integrations-fields.txt --out=integrations.csv
 mongoexport --db=wekan --collection=lists --type=csv --fieldFile=lists-fields.txt --out=lists.csv
 mongoexport --db=wekan --collection=org --type=csv --fieldFile=org-fields.txt --out=org.csv
+mongoexport --db=wekan --collection=orgUser --type=csv --fieldFile=orgUser-fields.txt --out=orgUser.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 
 echo ".mode csv
@@ -49,5 +50,6 @@ echo ".mode csv
 .import integrations.csv integrations
 .import lists.csv lists
 .import org.csv org
+.import orgUser.csv orgUser
 .import users.csv users
 .quit" | sqlite3 wekan.sqlite

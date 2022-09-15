@@ -18,6 +18,7 @@ mongoexport --db=wekan --collection=card_comment_reactions --type=csv --fieldFil
 mongoexport --db=wekan --collection=card_comments --type=csv --fieldFile=card_comments-fields.txt --out=card_comments.csv
 mongoexport --db=wekan --collection=checklists --type=csv --fieldFile=checklists-fields.txt --out=checklists.csv
 mongoexport --db=wekan --collection=checklistItems --type=csv --fieldFile=checklistItems-fields.txt --out=checklistItems.csv
+mongoexport --db=wekan --collection=customFields --type=csv --fieldFile=customFields-fields.txt --out=customFields.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 
 echo ".mode csv
@@ -39,5 +40,6 @@ echo ".mode csv
 .import card_comment_reactions.csv card_comment_reactions
 .import checklists.csv checklists
 .import checklistItems.csv checklistItems
+.import customFields.csv customFields
 .import users.csv users
 .quit" | sqlite3 wekan.sqlite

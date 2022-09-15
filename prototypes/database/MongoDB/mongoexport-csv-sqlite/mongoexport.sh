@@ -30,14 +30,13 @@ mongoexport --db=wekan --collection=swimlanes --type=csv --fieldFile=swimlanes-f
 mongoexport --db=wekan --collection=tableVisibilityModeSettings --type=csv --fieldFile=tableVisibilityModeSettings-fields.txt --out=tableVisibilityModeSettings.csv
 mongoexport --db=wekan --collection=team --type=csv --fieldFile=team-fields.txt --out=team.csv
 mongoexport --db=wekan --collection=triggers --type=csv --fieldFile=triggers-fields.txt --out=triggers.csv
-mongoexport --db=wekan --collection=unsavedEdits --type=csv --fieldFile=unsavedEdits-fields.txt --out=unsavedEdits.csv
-mongoexport --db=wekan --collection=usersessiondata --type=csv --fieldFile=usersessiondata-fields.txt --out=usersessiondata.csv
+mongoexport --db=wekan --collection=unsaved-edits --type=csv --fieldFile=unsaved-edits-fields.txt --out=unsaved-edits.csv
+mongoexport --db=wekan --collection=sessiondata --type=csv --fieldFile=sessiondata-fields.txt --out=sessiondata.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 mongoexport --db=wekan --collection=esCounts --type=csv --fieldFile=esCounts-fields.txt --out=esCounts.csv
 mongoexport --db=wekan --collection=meteor_accounts_loginServiceConfiguration --type=csv --fieldFile=meteor_accounts_loginServiceConfiguration-fields.txt --out=meteor_accounts_loginServiceConfiguration.csv
 mongoexport --db=wekan --collection=meteor-migrations --type=csv --fieldFile=meteor-migrations-fields.txt --out=meteor-migrations.csv
 mongoexport --db=wekan --collection=presences --type=csv --fieldFile=presences-fields.txt --out=presences.csv
-mongoexport --db=wekan --collection=sessiondata --type=csv --fieldFile=sessiondata-fields.txt --out=sessiondata.csv
 
 echo ".mode csv
 .import accountSettings.csv accountSettings
@@ -70,12 +69,11 @@ echo ".mode csv
 .import tableVisibilityModeSettings.csv tableVisibilityModeSettings
 .import team.csv team
 .import triggers.csv triggers
-.import unsavedEdits.csv unsavedEdits
-.import usersessiondata.csv usersessiondata
+.import unsaved-edits.csv unsaved-edits
+.import sessiondata.csv sessiondata
 .import users.csv users
 .import esCounts.csv esCounts
 .import meteor_accounts_loginServiceConfiguration.csv meteor_accounts_loginServiceConfiguration
 .import meteor-migrations.csv meteor-migrations
 .import presences.csv presences
-.import sessiondata.csv sessiondata
 .quit" | sqlite3 wekan.sqlite

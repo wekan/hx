@@ -20,6 +20,7 @@ mongoexport --db=wekan --collection=checklists --type=csv --fieldFile=checklists
 mongoexport --db=wekan --collection=checklistItems --type=csv --fieldFile=checklistItems-fields.txt --out=checklistItems.csv
 mongoexport --db=wekan --collection=customFields --type=csv --fieldFile=customFields-fields.txt --out=customFields.csv
 mongoexport --db=wekan --collection=impersonatedUsers --type=csv --fieldFile=impersonatedUsers-fields.txt --out=impersonatedUsers.csv
+mongoexport --db=wekan --collection=integrations --type=csv --fieldFile=integrations-fields.txt --out=integrations.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 
 echo ".mode csv
@@ -43,5 +44,6 @@ echo ".mode csv
 .import checklistItems.csv checklistItems
 .import customFields.csv customFields
 .import impersonatedUsers.csv impersonatedUsers
+.import integrations.csv integrations
 .import users.csv users
 .quit" | sqlite3 wekan.sqlite

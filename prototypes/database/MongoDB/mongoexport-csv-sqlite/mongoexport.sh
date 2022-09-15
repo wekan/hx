@@ -27,6 +27,8 @@ mongoexport --db=wekan --collection=orgUser --type=csv --fieldFile=orgUser-field
 mongoexport --db=wekan --collection=rules --type=csv --fieldFile=rules-fields.txt --out=rules.csv
 mongoexport --db=wekan --collection=settings --type=csv --fieldFile=settings-fields.txt --out=settings.csv
 mongoexport --db=wekan --collection=swimlanes --type=csv --fieldFile=swimlanes-fields.txt --out=swimlanes.csv
+mongoexport --db=wekan --collection=tableVisibilityModeSettings --type=csv --fieldFile=tableVisibilityModeSettings-fields.txt --out=tableVisibilityModeSettings.csv
+mongoexport --db=wekan --collection=team --type=csv --fieldFile=team-fields.txt --out=team.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 
 echo ".mode csv
@@ -57,5 +59,7 @@ echo ".mode csv
 .import rules.csv rules
 .import settings.csv settings
 .import swimlanes.csv swimlanes
+.import tableVisibilityModeSettings.csv tableVisibilityModeSettings
+.import team.csv team
 .import users.csv users
 .quit" | sqlite3 wekan.sqlite

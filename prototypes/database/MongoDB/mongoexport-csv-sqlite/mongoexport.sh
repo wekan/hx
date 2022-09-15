@@ -33,6 +33,8 @@ mongoexport --db=wekan --collection=triggers --type=csv --fieldFile=triggers-fie
 mongoexport --db=wekan --collection=unsavedEdits --type=csv --fieldFile=unsavedEdits-fields.txt --out=unsavedEdits.csv
 mongoexport --db=wekan --collection=usersessiondata --type=csv --fieldFile=usersessiondata-fields.txt --out=usersessiondata.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
+mongoexport --db=wekan --collection=esCounts --type=csv --fieldFile=esCounts-fields.txt --out=esCounts.csv
+mongoexport --db=wekan --collection=meteor_accounts_loginServiceConfiguration --type=csv --fieldFile=meteor_accounts_loginServiceConfiguration-fields.txt --out=meteor_accounts_loginServiceConfiguration.csv
 
 echo ".mode csv
 .import accountSettings.csv accountSettings
@@ -68,4 +70,6 @@ echo ".mode csv
 .import unsavedEdits.csv unsavedEdits
 .import usersessiondata.csv usersessiondata
 .import users.csv users
+.import esCounts.csv esCounts
+.import meteor_accounts_loginServiceConfiguration.csv meteor_accounts_loginServiceConfiguration
 .quit" | sqlite3 wekan.sqlite

@@ -1,0 +1,14 @@
+_id
+userId
+sessionId
+totalHits
+resultsCount
+lastHit
+cards
+selector
+projection
+errorMessages
+errors
+debug
+createdAt
+modifiedAt

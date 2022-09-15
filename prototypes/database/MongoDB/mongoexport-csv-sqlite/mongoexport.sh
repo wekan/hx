@@ -31,6 +31,7 @@ mongoexport --db=wekan --collection=tableVisibilityModeSettings --type=csv --fie
 mongoexport --db=wekan --collection=team --type=csv --fieldFile=team-fields.txt --out=team.csv
 mongoexport --db=wekan --collection=triggers --type=csv --fieldFile=triggers-fields.txt --out=triggers.csv
 mongoexport --db=wekan --collection=unsavedEdits --type=csv --fieldFile=unsavedEdits-fields.txt --out=unsavedEdits.csv
+mongoexport --db=wekan --collection=usersessiondata --type=csv --fieldFile=usersessiondata-fields.txt --out=usersessiondata.csv
 mongoexport --db=wekan --collection=users --type=csv --fieldFile=users-fields.txt --out=users.csv
 
 echo ".mode csv
@@ -65,5 +66,6 @@ echo ".mode csv
 .import team.csv team
 .import triggers.csv triggers
 .import unsavedEdits.csv unsavedEdits
+.import usersessiondata.csv usersessiondata
 .import users.csv users
 .quit" | sqlite3 wekan.sqlite

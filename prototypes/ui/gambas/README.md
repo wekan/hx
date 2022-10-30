@@ -51,6 +51,10 @@ gambas3
 
 5) And it opens Gambas GUI.
 
+6) Related: SystemD on WSL2
+
+https://devblogs.microsoft.com/commandline/systemd-support-is-now-available-in-wsl/
+
 ## Install on Linux
 
 1. Run `./install-deps.sh`

@@ -1,6 +1,8 @@
 # WeKan ®
 
-This uses Gambas with SQLite database.
+This uses Gambas for WebUI app with SQLite database.
+
+Current prototype has login, some menus, but not other functionality yet.
 
 ## About WeKan ® for Gambas
 

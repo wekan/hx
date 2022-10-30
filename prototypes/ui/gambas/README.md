@@ -14,6 +14,8 @@ Developed by [WeKan ® Team](https://wekan.team) using Gambas Daily builds on ne
 
 ## About Gambas
 
+Gambas has IDE similar to VB6. Gambas can create GUI, WebUI and CLI apps.
+
 [Gambas website](http://gambas.sourceforge.net)
 
 [Daily PPA](https://launchpad.net/~gambas-team/+archive/ubuntu/gambas-daily)

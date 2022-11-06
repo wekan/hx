@@ -3,7 +3,7 @@
 -- Copyright 2021 Paul Kulchenko
 --
 
-local NAME, VERSION = "fullmoon", "0.32"
+local NAME, VERSION = "fullmoon", "0.35"
 
 --[[-- support functions --]]--
 
@@ -153,7 +153,7 @@ end
 
 local ref = {} -- some unique key value
 -- request functions (`request.write()`)
-local reqenv = { write = Write,
+local reqenv = {
   escapeHtml = EscapeHtml, escapePath = EscapePath,
   formatIp = FormatIp, formatHttpDateTime = FormatHttpDateTime,
   makePath = makePath, makeUrl = makeUrl, }
@@ -235,24 +235,24 @@ end
 
 --[[-- template engine --]]--
 
-local templates = {}
+local templates, vars = {}, {}
 local function render(name, opt)
   argerror(type(name) == "string", 1, "(string expected)")
   argerror(templates[name], 1, "(unknown template name '"..tostring(name).."')")
   argerror(not opt or type(opt) == "table", 2, "(table expected)")
-  local params = {}
+  local params = {vars = vars}  -- assign by default, but allow to overwrite
   local env = getfenv(templates[name].handler)
   -- add "original" template parameters
   for k, v in pairs(rawget(env, ref) or {}) do params[k] = v end
   -- add "passed" template parameters
   for k, v in pairs(opt or {}) do params[k] = v end
   LogDebug("render template '%s'", name)
-  -- return template results or an empty string to indicate completion
-  -- this is useful when the template does direct write to the output buffer
   local refcopy = env[ref]
   env[ref] = params
   local res, more = templates[name].handler(opt)
   env[ref] = refcopy
+  -- return template results or an empty string to indicate completion
+  -- this is useful when the template does direct write to the output buffer
   return res or "", more or templates[name].ContentType
 end
 
@@ -261,17 +261,19 @@ local function setTemplate(name, code, opt)
   -- to load templates from;
   -- its hash values provide mapping from extensions to template types
   if type(name) == "table" then
+    local tmpls = {}
     for _, prefix in ipairs(name) do
       local paths = GetZipPaths(prefix)
       for _, path in ipairs(paths) do
         local tmplname, ext = path:gsub("^"..prefix.."/?",""):match("(.+)%.(%w+)$")
         if ext and name[ext] then
-          setTemplate(tmplname, {type = name[ext],
+          setTemplate(tmplname, {type = name[ext], path  = path,
               LoadAsset(path) or error("Can't load asset: "..path)})
+          tmpls[tmplname] = true
         end
       end
     end
-    return
+    return tmpls
   end
   argerror(type(name) == "string", 1, "(string or table expected)")
   local params = {}
@@ -283,7 +285,7 @@ local function setTemplate(name, code, opt)
   if ctype == "string" then
     argerror(tmpl ~= nil, 2, "(unknown template type/name)")
     argerror(tmpl.parser ~= nil, 2, "(referenced template doesn't have a parser)")
-    code = assert(load(tmpl.parser(code), code))
+    code = assert(load(tmpl.parser(code), "@".. (params.path or name)))
   end
   local env = setmetatable({render = render, [ref] = opt},
     -- get the metatable from the template that this one is based on,
@@ -292,7 +294,10 @@ local function setTemplate(name, code, opt)
     (opt or {}).autotag and tmplTagHandlerEnv or tmplRegHandlerEnv)
   params.handler = setfenv(code, env)
   templates[name] = params
+  return {name = true}
 end
+
+local function setTemplateVar(name, value) vars[name] = value end
 
 --[[-- routing engine --]]--
 
@@ -492,6 +497,244 @@ local function matchRoute(path, req)
   end
 end
 
+--[[-- storage engine --]]--
+
+local function makeStorage(dbname, sqlsetup)
+  local sqlite3 = require "lsqlite3"
+  local dbm = {prepcache = {}, name = dbname, sql = sqlsetup}
+  local msgdelete = "use delete option to force"
+  function dbm:init()
+    local db = self.db
+    if not db then
+      local code, msg
+      db, code, msg = sqlite3.open(self.name)
+      if not db then error(("%s (code: %d)"):format(msg, code)) end
+      if db:exec(self.sql) > 0 then error("can't setup db: "..db:errmsg()) end
+      self.db = db
+    end
+    -- simple __index = db doesn't work, as it gets `dbm` passed instead of `db`,
+    -- so remapping is needed to proxy this to `t.db` instead
+    return setmetatable(self, {__index = function(t,k)
+          return sqlite3[k] or t.db[k] and function(self,...) return t.db[k](db,...) end
+        end})
+  end
+  local function norm(sql)
+    return (sql:gsub("%-%-[^\n]*\n?",""):gsub("^%s+",""):gsub("%s+$",""):gsub("%s+"," ")
+      :gsub("%s*([(),])%s*","%1"):gsub('"(%w+)"',"%1"))
+  end
+  function dbm:upgrade(opts)
+    opts = opts or {}
+    local actual = self.db or error("can't ungrade non initialized db")
+    local pristine = makeStorage(":memory:", self.sql).db
+    local sqltbl = [[SELECT name, sql FROM sqlite_master
+      WHERE type = "table" AND name not like "sqlite_%"]]
+    -- this PRAGMA is automatically disabled when the db is committed
+    local err
+    local changes = {}
+    local actbl, prtbl = {}, {}
+    for r in pristine:nrows(sqltbl) do prtbl[r.name] = r.sql end
+    for r in actual:nrows(sqltbl) do
+      actbl[r.name] = true
+      if prtbl[r.name] then
+        if norm(r.sql) ~= norm(prtbl[r.name]) then
+          local namepatt = '%f[^%s"]'..r.name:gsub("%p","%%%1")..'%f[%s"(]'
+          local tmpname = r.name.."__new"
+          local createtbl = prtbl[r.name]:gsub(namepatt, tmpname, 1)
+          table.insert(changes, createtbl)
+
+          local sqlcol = ("PRAGMA table_info(%s)"):format(r.name)
+          local common, prcol = {}, {}
+          for c in pristine:nrows(sqlcol) do prcol[c.name] = true end
+          for c in actual:nrows(sqlcol) do
+            if prcol[c.name] then
+              table.insert(common, c.name)
+            elseif not opts.delete then
+              err = err or ("Not allowed to remove '%s' from '%s'; %s"
+                ):format(c.name, r.name, msgdelete)
+            end
+          end
+          local cols = table.concat(common, ",")
+          table.insert(changes, ("INSERT INTO %s (%s) SELECT %s FROM %s")
+            :format(tmpname, cols, cols, r.name))
+          table.insert(changes, ("DROP TABLE %s"):format(r.name))
+          table.insert(changes, ("ALTER TABLE %s RENAME TO %s"):format(tmpname, r.name))
+        end
+      else
+        if opts.delete == nil then
+          err = err or ("Not allowed to drop table '%s'; %s"
+            ):format(r.name, msgdelete)
+        end
+        if opts.delete == true then
+          table.insert(changes, ("DROP table %s"):format(r.name))
+        end
+      end
+    end
+    if err then return nil, err end
+    for k in pairs(prtbl) do
+      if not actbl[k] then table.insert(changes, prtbl[k]) end
+    end
+
+    local sqlidx = [[SELECT name, sql FROM sqlite_master
+      WHERE type = "index" AND name not like "sqlite_%"]]
+    actbl, prtbl = {}, {}
+    for r in pristine:nrows(sqlidx) do prtbl[r.name] = r.sql end
+    for r in actual:nrows(sqlidx) do
+      actbl[r.name] = true
+      if prtbl[r.name] then
+        if r.sql ~= prtbl[r.name] then
+          table.insert(changes, ("DROP INDEX IF EXISTS %s"):format(r.name))
+          table.insert(changes, prtbl[r.name])
+        end
+      else
+        table.insert(changes, ("DROP INDEX IF EXISTS %s"):format(r.name))
+      end
+    end
+    for k in pairs(prtbl) do
+      if not actbl[k] then table.insert(changes, prtbl[k]) end
+    end
+
+    local acpfk, prpfk = "0", "0"
+    -- get the current value of `PRAGMA foreign_keys` to restore if needed
+    actual:exec("PRAGMA foreign_keys", function (u,c,v,n) acpfk = v[1] return 0 end)
+    -- get the pristine value of `PRAGMA foreign_keys` to set later
+    pristine:exec("PRAGMA foreign_keys", function (u,c,v,n) prpfk = v[1] return 0 end)
+
+    if opts.integritycheck ~= false then
+      local row = self:fetchone("PRAGMA integrity_check(1)")
+      if row and row.integrity_check ~= "ok" then return nil, row.integrity_check end
+      -- check foreign key violations if the foreign key setting is enabled
+      row = prpfk ~= "0" and self:fetchone("PRAGMA foreign_key_check")
+      if row then return nil, "foreign key check failed" end
+    end
+    if opts.dryrun then return changes end
+    if #changes == 0 then return changes end
+
+    -- disable `pragma foreign_keys`, to avoid triggerring cascading deletes
+    local ok, err = self:exec("PRAGMA foreign_keys=0")
+    if not ok then return ok, err end
+
+    -- execute the changes
+    ok, err = self:execall(changes)
+    -- restore `PRAGMA foreign_keys` value:
+    -- (1) to the original value after failure
+    -- (2) to the "pristine" value after normal execution
+    local pfk = "PRAGMA foreign_keys="..(ok and prpfk or acpfk)
+    if self:exec(pfk) and ok then table.insert(changes, pfk) end
+    if not ok then return ok, err end
+
+    -- clean up the database
+    ok, err = self:exec("VACUUM")
+    if not ok then return ok, err end
+    return changes
+  end
+  function dbm:prepstmt(stmt)
+    if not self.prepcache[stmt] then
+      self.prepcache[stmt] = self.db:prepare(stmt)
+    end
+    return self.prepcache[stmt]
+  end
+  function dbm:close()
+    if not self.db then return end
+    local db = self.db
+    for code, stmt in pairs(self.prepcache) do
+      if stmt:finalize() > 0 then
+        error("can't finalize '"..code.."': "..db:errmsg())
+      end
+    end
+    return db:close()
+  end
+  function dbm:exec(stmt, ...)
+    if not self.db then self:init() end
+    local db = self.db
+    if type(stmt) == "string" then stmt = self:prepstmt(stmt) end
+    if not stmt then return nil, "can't prepare: "..db:errmsg() end
+    if stmt:bind_values(...) > 0 then return nil, "can't bind values"..db:errmsg() end
+    if stmt:step() ~= sqlite3.DONE then
+      return nil, "can't execute prepared statement: "..db:errmsg()
+    end
+    stmt:reset()
+    return db:changes()
+  end
+  local function fetch(self, stmt, one, ...)
+    if not self.db then self:init() end
+    local db = self.db
+    if type(stmt) == "string" then stmt = self:prepstmt(stmt) end
+    if not stmt then error("can't prepare: "..db:errmsg()) end
+    if stmt:bind_values(...) > 0 then error("can't bind values: "..db:errmsg()) end
+    local rows = {}
+    for row in stmt:nrows() do
+      table.insert(rows, row)
+      if one then break end
+    end
+    stmt:reset()
+    return not one and rows or rows[1]
+  end
+  function dbm:fetchall(stmt, ...) return fetch(dbm, stmt, false, ...) end
+  function dbm:fetchone(stmt, ...) return fetch(dbm, stmt, true, ...) end
+  function dbm:execall(list)
+    if not self.db then self:init() end
+    local db = self.db
+    db:exec("begin")
+    for _, sql in ipairs(list) do
+      if type(sql) ~= "table" then sql = {sql} end
+      local ok, err = self:exec(unpack(sql))
+      if not ok then
+        db:exec("rollback")
+        return nil, err
+      end
+    end
+    db:exec("commit")
+    return true
+  end
+  return dbm:init()
+end
+
+--[[-- hook management --]]--
+
+local hooks = {}
+local function onHook(hookName, ...)
+  for _, v in ipairs(hooks[hookName]) do
+    local res = v[1](...)
+    if res ~= nil then return res end
+  end
+end
+local function findHook(hookName, suffix)
+  for i, v in ipairs(hooks[hookName]) do
+    if v[2] == suffix then return i, v end
+  end
+end
+local function setHook(name, func)
+  -- name: OnWorkerStart[.suffix]
+  argerror(type(name) == "string", 1, "(string expected)")
+  local main, suffix = name:match("([^.]+)%.?(.*)")
+  -- register redbean hook even without handler;
+  -- this is needed to set up a handler later, as for some
+  -- hooks redbean only checks before the main loop is started
+  if not hooks[main] then
+    hooks[main] = {}
+    local orig = _G[main]
+    _G[main] = function(...)
+      if orig then orig() end
+      return onHook(main, ...)
+    end
+  end
+  local idx, val = findHook(main, suffix)
+  local res = val and val[1]
+  local isQualified = #suffix > 0
+  if not func then
+    -- remove the current hook if it's a fully qualified hook
+    if isQualified then table.remove(hooks[main], idx) end
+  else  -- set the new function
+    local hook = {func, suffix}
+    if idx and isQualified then  -- update existing qualified hook
+      hooks[main][idx] = hook
+    else  -- add a new one
+      table.insert(hooks[main], hook)
+    end
+  end
+  return res  -- return the old hook value (if any)
+end
+
 --[[-- scheduling engine --]]--
 
 local function expand(min, max, vals)
@@ -526,12 +769,13 @@ local function cron2hash(rec)
   return tbl
 end
 
-local schedules, lasttime, runSchedule = {}, 0
-local function checkSchedule(time, sameproc)
+local schedules, lasttime = {}, 0
+local scheduleHook = "OnServerHeartbeat.fm-setSchedule"
+local function checkSchedule(time)
   local times = FormatHttpDateTime(time)
   local dow, dom, mon, h, m = times:lower():match("^(%S+), (%S+) (%S+) %S+ (%S+):(%S+):")
   for _, v in pairs(schedules) do
-    local cront, func = v[1], v[2]
+    local cront, func, sameproc = v[1], v[2], v[3]
     if cront[1][m] and cront[2][h] and cront[3][dom] and cront[4][mon] and cront[5][dow] then
       if sameproc or assert(unix.fork()) == 0 then
         local ok, err = pcall(func)
@@ -541,14 +785,26 @@ local function checkSchedule(time, sameproc)
     end
   end
 end
-local function setSchedule(exp, func)
+local function scheduler()
+  local time = math.floor(GetTime()/60)*60
+  if time == lasttime then return else lasttime = time end
+  checkSchedule(time)
+end
+local function setSchedule(exp, func, opts)
+  if type(exp) == "table" then opts, exp, func = exp, unpack(exp) end
+  opts = opts or {}
+  argerror(type(opts) == "table", 3, "(table expected)")
   local res, err = cron2hash(exp)
   argerror(res ~= nil, 1, err)
-  schedules[exp] = {res, func}
-  runSchedule = runSchedule or function()
-    local time = math.floor(GetTime()/60)*60
-    if time == lasttime then return else lasttime = time end
-    checkSchedule(time)
+  schedules[exp] = {res, func, opts.sameProc}
+  if not setHook(scheduleHook, scheduler) then  -- first schedule hook
+    if ProgramHeartbeatInterval then
+      local min = 60*1000
+      if ProgramHeartbeatInterval() > min then ProgramHeartbeatInterval(min) end
+    else
+      LogWarn("OnServerHeartbeat is required for setSchedule to work,"..
+        " but may not be available; you need redbean v2.0.16+.")
+    end
   end
 end
 
@@ -683,13 +939,17 @@ local function error2tmpl(status, reason, message)
   SetStatus(status, reason) -- set status, but allow template handlers to overwrite it
   local ok, res = pcall(render, tostring(status),
     {status = status, reason = reason, message = message})
+  if not ok and status ~= 500 and not res:find("unknown template name") then
+    error(res)
+  end
   return ok and res or ServeError(status, reason) or true
 end
 local function checkPath(path) return type(path) == "string" and path or GetPath() end
 local fm = setmetatable({ _VERSION = VERSION, _NAME = NAME, _COPYRIGHT = "Paul Kulchenko",
   getBrand = function() return ("%s/%s %s/%s"):format("redbean", getRBVersion(), NAME, VERSION) end,
-  setTemplate = setTemplate, setRoute = setRoute,
-  setSchedule = setSchedule,
+  setTemplate = setTemplate, setTemplateVar = setTemplateVar,
+  setRoute = setRoute, setSchedule = setSchedule, setHook = setHook,
+  makeStorage = makeStorage,
   makePath = makePath, makeUrl = makeUrl,
   makeBasicAuth = makeBasicAuth, makeIpMatcher = makeIpMatcher,
   makeLastModified = makeLastModified, makeValidator = makeValidator,
@@ -961,17 +1221,6 @@ local function run(opts)
         :format(EncodeBase64(sopts.secret))
       .." or to `false` to disable")
   end
-  if runSchedule then
-    if ProgramHeartbeatInterval then
-      local min = 60*1000
-      if ProgramHeartbeatInterval() > min then ProgramHeartbeatInterval(min) end
-    else
-      LogWarn("OnServerHeartbeat is required for setSchedule to work,"..
-        " but may not be available; you need redbean v2.0.16+.")
-    end
-    local OSH = OnServerHeartbeat  -- save the existing hook if any
-    OnServerHeartbeat = function() runSchedule() if OSH then OSH() end end
-  end
   -- assign Redbean handler to execute on each request
   OnHttpRequest = function() handleRequest(GetPath()) end
 
@@ -986,13 +1235,13 @@ Log = Log or function() end
 fm.setTemplate("fmt", {
     parser = function (tmpl)
       local EOT = "\0"
-      local function writer(s) return #s > 0 and ("write(%q)"):format(s) or "" end
+      local function writer(s) return #s > 0 and ("Write(%q)"):format(s) or "" end
       local tupd = (tmpl.."{%"..EOT.."%}"):gsub("(.-){%%([=&]*)%s*(.-)%s*%%}", function(htm, pref, val)
           return writer(htm)
           ..(val ~= EOT -- this is not the suffix
             and (pref == "" -- this is a code fragment
               and val.." "
-              or ("write(%s(tostring(%s or '')))")
+              or ("Write(%s(tostring(%s or '')))")
                 :format(pref == "&" and "escapeHtml" or "", val))
             or "")
         end)
@@ -1207,6 +1456,12 @@ tests = function()
     fm.setTemplate(tmpl2, [[{% local title = "set from template" %}{a: "{%= title %}"}]])
     fm.render(tmpl2)
     is(out, '{a: "set from template"}', "JSON with value set from template")
+
+    fm.setTemplateVar("num", 123)
+    fm.setTemplateVar("fun", function() return "abc" end)
+    fm.setTemplate(tmpl2, "{%= vars.num %}{%= vars.fun() %}")
+    fm.render(tmpl2)
+    is(out, '123abc', "templates vars are set with numbers and functions")
   end
 
   fm.setTemplate(tmpl2, [[{a: "{%= title %}"}]], {title = "set when adding"})
@@ -1221,7 +1476,7 @@ tests = function()
   fm.setTemplate(tmpl1, "Hello, World!\n{% something.missing() %}")
   local ok, err = pcall(render, tmpl1)
   is(err ~= nil, true, "report Lua error in template")
-  is(err:match('string "Hello, World!'), 'string "Hello, World!', "error references original template code")
+  is(err:match('tmpl1:'), 'tmpl1:', "error references original template name")
   is(err:match(':2: '), ':2: ', "error references expected line number")
 
   fm.setTemplate(tmpl1, "{%if title then%}full{%else%}empty{%end%}")
@@ -1243,7 +1498,9 @@ tests = function()
           ["/views/hello3.aaa"] = "Hello",
         })[s] end,
       function()
-        fm.setTemplate({"/views/", fmt = "fmt", fmg = "html"})
+        local tmpls = fm.setTemplate({"/views/", fmt = "fmt", fmg = "html"})
+        is(tmpls["hello1"], true, "setTemplate for a folder returns list of templates 1/2")
+        is(tmpls["hello2"], true, "setTemplate for a folder returns list of templates 2/2")
         fm.render("hello1", {title = "value 1"})
         is(out, [[Hello, value 1]], "rendered default template loaded from an asset")
         fm.render("hello2", {title = "value 2"})
@@ -1401,15 +1658,23 @@ tests = function()
 
   section = "(schedule)"
   do local res={}
-    fm.setSchedule("* * * * *", function() res.everymin = true end)
-    fm.setSchedule("*/2 * * * *", function() res.everyothermin = true end)
-    checkSchedule(1*60, true)
+    OnServerHeartbeat = function() res.hook = true end
+    fm.setSchedule("* * * * *", function() res.everymin = true end, {sameProc = true})
+    fm.setSchedule{"*/2 * * * *", function() res.everyothermin = true end, sameProc = true}
+    fm.setHook("OnServerHeartbeat.testhook", function() res.hookcalls = true end)
+    GetTime = function() return 1*60 end
+    OnServerHeartbeat()
     is(res.everymin, true, "* is called on minute 1")
     is(res.everyothermin, nil, "*/2 is not called on minute 1")
+    is(res.hook, true, "'original' hook is called as well")
+    is(res.hookcalls, true, "setHook sets hook that is then called")
     res={}
-    checkSchedule(2*60, true)
+    GetTime = function() return 2*60 end
+    fm.setHook("OnServerHeartbeat.testhook")  -- remove hook
+    OnServerHeartbeat()
     is(res.everymin, true, "* is called on minute 2")
     is(res.everyothermin, true, "*/2 is called on minute 2")
+    is(res.hookcalls, nil, "setHook removes hook that is then not called")
   end
 
   --[[-- request tests --]]--
@@ -1856,6 +2121,23 @@ tests = function()
     is(type(fm.isLoopbackIp), "function", "isLoopbackIp function is available")
     is(type(fm.formatIp), "function", "formatIp function is available")
     is(type(fm.formatHttpDateTime), "function", "formatHttpDateTime function is available")
+  end
+
+  --[[-- DB management tests --]]--
+
+  if isRedbean then
+    section = "(makeStorage)"
+    local script = [[
+      create table test(key integer primary key, value text)
+    ]]
+    local dbm = fm.makeStorage(":memory:", script)
+    local changes = dbm:upgrade()
+    is(#changes, 0, "no changes from initial upgrade")
+    changes = dbm:exec("insert into test values(1, 'abc')")
+    is(changes, 1, "insert is successful")
+    local row = dbm:fetchone("select key, value from test where key = 1")
+    is(row.key, 1, "select fetches expected value 1/2")
+    is(row.value, "abc", "select fetches expected value 2/2")
   end
 
   --[[-- run tests --]]--

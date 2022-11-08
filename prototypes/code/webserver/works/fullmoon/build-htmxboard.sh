@@ -12,6 +12,9 @@
 cp redbean-2.2.com redbean.com
 
 #rm -rf assets tmpl .lua
+#cp ~/repos/fullmoon/examples/techbench.lua .init.lua
+cp htmxboard-init.lua .init.lua
+cp htmxboard.lua .lua/
 #cp ~/repos/fullmoon/examples/htmxboard/htmxboard.lua .init.lua
 #mkdir .lua
 #cp ~/repos/fullmoon/fullmoon.lua .lua/
@@ -19,8 +22,8 @@ cp redbean-2.2.com redbean.com
 #cp -pR ~/repos/fullmoon/examples/htmxboard/tmpl .
 cp index.fmg tmpl/
 
-zip redbean.com .init.lua .lua/fullmoon.lua assets/styles.css \
-assets/htmx.js assets/hyperscript.js assets/Sortable.js \
+zip redbean.com .init.lua .lua/fullmoon.lua .lua/htmxboard.lua \
+assets/styles.css assets/htmx.js assets/hyperscript.js assets/Sortable.js \
 tmpl/board.fmg tmpl/card.fmg tmpl/icon-edit.fmt  tmpl/index.fmg \
 tmpl/list.fmg tmpl/state-show.fmt tmpl/card-edit.fmg \
-tmpl/icon-close.fmt tmpl/icon-plus.fmt  tmpl/list-add.fmg tmpl/list-new.fmg
+tmpl/icon-close.fmt tmpl/icon-plus.fmt tmpl/list-add.fmg tmpl/list-new.fmg

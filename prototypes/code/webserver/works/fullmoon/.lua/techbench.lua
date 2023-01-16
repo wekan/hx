@@ -6,9 +6,9 @@
 local lsqlite3 = require"lsqlite3"
 -- local dbm = lsqlite3.open_memory()
 local dbm = lsqlite3.open('redbean.sqlite3')
--- db:busy_timeout(1000)
--- db:exec[[PRAGMA journal_mode=WAL]]
--- db:exec[[PRAGMA synchronous=NORMAL]]
+db:busy_timeout(1000)
+db:exec[[PRAGMA journal_mode=WAL]]
+db:exec[[PRAGMA synchronous=NORMAL]]
 if dbm:exec[[
 CREATE TABLE IF NOT EXISTS World (id INTEGER PRIMARY KEY, randomNumber INTEGER NOT NULL default 0);
 CREATE TABLE IF NOT EXISTS Fortune (id INTEGER PRIMARY KEY, message TEXT);

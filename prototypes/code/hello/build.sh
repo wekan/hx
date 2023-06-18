@@ -432,7 +432,7 @@ do
             fi
 
             echo "Run HashLink hl"
-            echo "M1 hashlink could be broken: https://github.com/HaxeFoundation/hashlink/pull/577"
+            echo "M1 hashlink could be broken: https://github.com/HaxeFoundation/hashlink/pull/577 https://github.com/HaxeFoundation/hashlink/issues/557"
             hl .build/hl/wekan.hl
             echo "Run Java jar"
             java -jar .build/java/Wekan.jar

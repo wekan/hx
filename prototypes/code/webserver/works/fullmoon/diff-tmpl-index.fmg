@@ -1,0 +1,12 @@
+6c6
+<    link{href="/styles.css", rel="stylesheet"},
+---
+>    link{href="styles.css", rel="stylesheet"},
+19,21c19,21
+<   script{src="https://unpkg.com/htmx.org@1.3.1"},
+<   script{src="https://unpkg.com/hyperscript.org@0.0.8"},
+<   script{src="https://raw.githack.com/SortableJS/Sortable/master/Sortable.js"},
+---
+>   script{src="htmx.js"},
+>   script{src="hyperscript.js"},
+>   script{src="Sortable.js"},

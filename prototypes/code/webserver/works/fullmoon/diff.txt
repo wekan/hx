@@ -1,0 +1,1 @@
+diff ~/repos/fullmoon/examples/htmxboard/tmpl/index.fmg tmpl/index.fmg > diff-tmpl-index.fmg

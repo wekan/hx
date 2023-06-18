@@ -152,7 +152,13 @@ do
                 #  sudo xcode-select --install
                 # Run C# code with command: dotnet
                 #macOS provides OpenAL.framework, so no need to install openal
-                brew install haxe wget p7zip zip unzip unp screen dotnet-sdk openjdk@11 luarocks php@8.0 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv hashlink
+                #Changed dotnet-sdk => mono, because dotnet did not work
+                #Changed openjdk@11 => openjdk@17
+                brew install haxe wget p7zip zip unzip unp screen mono openjdk@17 luarocks php@8.2 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
+                # Install Java
+                # Old: sudo ln -sfn /opt/homebres/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
+                # https://stackoverflow.com/questions/69875335/macos-how-to-install-java-17
+                sudo ln -sfn /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 luarocks install lrexlib-pcre
                 luarocks install environ
                 luarocks install luasocket
@@ -421,7 +427,8 @@ do
                 mono .build/cs/bin/Wekan.exe
             elif [[ "$OSTYPE" == "darwin"* ]]; then
                 echo "macOS";
-                dotnet .build/cs/bin/Wekan.exe
+                #dotnet .build/cs/bin/Wekan.exe
+                mono .build/cs/bin/Wekan.exe
             fi
 
             echo "Run HashLink hl"

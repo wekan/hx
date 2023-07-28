@@ -28,7 +28,7 @@ end;
 
 procedure jsonEndpoint(aRequest: TRequest; aResponse: TResponse);
 begin
-  aResponse.Content:='{"everything":"great}';
+  aResponse.Content:='{"everything":"great"}';
   aResponse.Code:=200;
   aResponse.ContentType:='application/json';
   aResponse.ContentLength:=Length(aResponse.Content);
@@ -40,7 +40,7 @@ begin
   HTTPRouter.RegisterRoute('/', rmGet, @loginEndpoint);
   HTTPRouter.RegisterRoute('/json', rmGet, @jsonEndpoint);
   HTTPRouter.RegisterRoute('/catchall', rmAll, @catchallEndpoint, true);
-  Application.Threaded:=true;
+  Application.Threaded:=false;
   Application.Initialize;
   Writeln('Server is ready at localhost:' + IntToStr(Application.port));
   Application.Run;

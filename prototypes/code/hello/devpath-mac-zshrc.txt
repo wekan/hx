@@ -10,7 +10,7 @@ export PATH="/usr/local/n/versions/node/14.21.4/bin:/opt/homebrew/opt/make/libex
 PS1='%d %# '
 
 # Nano where line numbers work with nano -v file.txt
-echo PATH="/opt/homebrew/Cellar/nano/7.2/bin:$PATH"
+export PATH="/opt/homebrew/Cellar/nano/7.2/bin:$PATH"
 export EDITOR=nano
 
 # OpenJDK 17

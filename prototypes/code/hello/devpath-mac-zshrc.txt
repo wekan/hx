@@ -1,18 +1,29 @@
-# Show full path at prompt
-# https://superuser.com/questions/1108413/zsh-prompt-with-current-working-directory
-PS1='%d %# '
-
+# Node.js 14.21.4
 alias nodejs="node"
 export N_NODE_MIRROR=https://github.com/wekan/node-v14-esm/releases/download
 export LDFLAGS="-L/usr/local/n/versions/node/14.21.4/lib"
 export CPPFLAGS="-I/usr/local/n/versions/node/14.21.4/bin/include"
 export PATH="/usr/local/n/versions/node/14.21.4/bin:/opt/homebrew/opt/make/libexec/gnubin:$PATH"
 
-export PATH="~/repos:/opt/homebrew/opt/openjdk@17/bin:$PATH"
-export PATH="~/opt/homebrew/opt/php@8.2/bin:~/opt/homebrew/opt/php@8.2/sbin:~/.meteor:$PATH"
-export HAXE_STD_PATH="/opt/homebrew/lib/haxe/std"
-alias yd="noglob /opt/homebrew/bin/yt-dlp -f 'bv+ba/b' --sub-langs all,-live_chat --compat-options no-youtube-unavailable-videos --audio-multistreams --video-multistreams --no-clean-infojson --embed-subs"
+# Show full path at zsh prompt
+# https://superuser.com/questions/1108413/zsh-prompt-with-current-working-directory
+PS1='%d %# '
+
+# Nano where line numbers work with nano -v file.txt
+echo PATH="/opt/homebrew/Cellar/nano/7.2/bin:$PATH"
 export EDITOR=nano
+
+# OpenJDK 17
+export PATH="~/repos:/opt/homebrew/opt/openjdk@17/bin:$PATH"
+
+# PHP 8.2
+export PATH="~/opt/homebrew/opt/php@8.2/bin:~/opt/homebrew/opt/php@8.2/sbin:~/.meteor:$PATH"
+
+# Haxe
+export HAXE_STD_PATH="/opt/homebrew/lib/haxe/std"
+
+# yt-dlg for downloading YouTube videos
+alias yd="noglob /opt/homebrew/bin/yt-dlp -f 'bv+ba/b' --sub-langs all,-live_chat --compat-options no-youtube-unavailable-videos --audio-multistreams --video-multistreams --no-clean-infojson --embed-subs"
 
 #OLD:
 #export PATH="/opt/homebrew/opt/node@14/bin:$PATH"

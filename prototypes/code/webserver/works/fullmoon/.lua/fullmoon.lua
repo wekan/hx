@@ -1,9 +1,9 @@
 --
 -- ultralight webframework for [Redbean web server](https://redbean.dev/)
--- Copyright 2021 Paul Kulchenko
+-- Copyright 2021-23 Paul Kulchenko
 --
 
-local NAME, VERSION = "fullmoon", "0.35"
+local NAME, VERSION = "fullmoon", "0.373"
 
 --[[-- support functions --]]--
 
@@ -39,15 +39,16 @@ local function loadsafe(data)
   return ok, res
 end
 local function argerror(cond, narg, extramsg, name)
+  if cond then return cond end
   name = name or debug.getinfo(2, "n").name or "?"
   local msg = ("bad argument #%d to %s%s"):format(narg, name, extramsg and " "..extramsg or  "")
-  if not cond then error(msg, 3) end
-  return cond, msg
+  return error(msg, 3)
 end
 local function logFormat(fmt, ...)
   argerror(type(fmt) == "string", 1, "(string expected)")
   return "(fm) "..(select('#', ...) == 0 and fmt or (fmt or ""):format(...))
 end
+local function quote(s) return s:gsub('([%(%)%.%%%+%-%*%?%[%^%$%]])','%%%1') end
 local function getRBVersion()
   local v = GetRedbeanVersion()
   local major = math.floor(v / 2^16)
@@ -61,6 +62,32 @@ local LogWarn = function(...) return Log(kLogWarn, logFormat(...)) end
 local istype = function(b)
   return function(mode) return math.floor((mode % (2*b)) / b) == 1 end end
 local isregfile = unix and unix.S_ISREG or istype(2^15)
+local function reg(func, v)
+  local t = {n = 1,
+    x2 = function(t, v) t[v] = t.n; t.n = t.n * 2 end,
+    p1 = function(t, v) t[v] = t.n; t.n = t.n + 1 end,
+  }
+  for _, p in ipairs(v) do t[func](t, p) end
+  return t
+end
+local function reg2x(v) return reg("x2", v) end
+local function reg1p(v) return reg("p1", v) end
+local getTimeNano = (unix
+  and function() return {unix.clock_gettime()} end
+  or function() return {GetTime(), 0} end)
+local function getTimeDiff(st, et)
+  if not et then et = getTimeNano() end
+  return et[1] - st[1] + (et[2] - st[2]) * 1e-9
+end
+local function obsolete(obj, old, new, ver)
+  obj[old] = VERSION < ver and function(...)
+    LogWarn(("method %s has been replaced by %s and will be removed in v%s.")
+      :format(old, new, ver))
+    obj[old] = obj[new]
+    return obj[new](...)
+  end or nil
+end
+
 -- headers that are not allowed to be set, as Redbean may
 -- also set them, leading to conflicts and improper handling
 local noHeaderMap = {
@@ -68,9 +95,10 @@ local noHeaderMap = {
   ["transfer-encoding"] = true,
   ["content-encoding"] = true,
   date = true,
-  connection = "close",  -- the only value that is allowed
+  -- "close" is the only value that is allowed for "Connection",
+  -- but only in Redbean before v2.2
+  connection = GetRedbeanVersion() < 0x20200 and "close" or nil,
 }
-
 -- request headers based on https://datatracker.ietf.org/doc/html/rfc7231#section-5
 -- response headers based on https://datatracker.ietf.org/doc/html/rfc7231#section-7
 -- this allows the user to use `.ContentType` instead of `["Content-Type"]`
@@ -233,6 +261,89 @@ local function serveResponse(status, headers, body)
   end
 end
 
+--[[-- multipart parsing --]]--
+
+local patts = {}
+local function getParameter(header, name)
+  local function optignorecase(s)
+    if not patts[s] then
+      patts[s] = (";%s*"
+        ..s:gsub("%w", function(s) return ("[%s%s]"):format(s:upper(), s:lower()) end)
+        ..[[=["']?([^;"']*)["']?]])
+    end
+    return patts[s]
+  end
+  return header:match(optignorecase(name))
+end
+local CRLF, TAIL = "\r\n", "--"
+local CRLFlen = #CRLF
+local MULTIVAL = "%[%]$"
+local function parseMultipart(body, ctype)
+  argerror(type(ctype) == "string", 2, "(string expected)")
+  local parts = {
+    boundary = getParameter(ctype, "boundary"),
+    start = getParameter(ctype, "start"),
+  }
+  local boundary = "--"..argerror(parts.boundary, 2, "(boundary expected in Content-Type)")
+  local bol, eol, eob = 1
+  while true do
+    repeat
+      eol, eob = string.find(body, boundary, bol, true)
+      if not eol then return nil, "missing expected boundary at position "..bol end
+    until eol == 1 or eol > CRLFlen and body:sub(eol-CRLFlen, eol-1) == CRLF
+    if eol > CRLFlen then eol = eol - CRLFlen end
+    local headers, name, filename = {}
+    if bol > 1 then
+      -- find the header (if any)
+      if string.sub(body, bol, bol+CRLFlen-1) == CRLF then -- no headers
+        bol = bol + CRLFlen
+      else -- headers
+        -- find the end of headers (CRLF+CRLF)
+        local boh, eoh = 1, string.find(body, CRLF..CRLF, bol, true)
+        if not eoh then return nil, "missing expected end of headers at position "..bol end
+        -- join multi-line header values back if present
+        local head = string.sub(body, bol, eoh+1):gsub(CRLF.."%s+", " ")
+        while (string.find(head, CRLF, boh, true) or 0) > boh do
+          local p, e, header, value = head:find("([^:]+)%s*:%s*(.-)%s*\r\n", boh)
+          if p ~= boh then return nil, "invalid header syntax at position "..bol+boh end
+          header = header:lower()
+          if header == "content-disposition" then
+            name = getParameter(value, "name")
+            filename = getParameter(value, "filename")
+          end
+          headers[header] = value
+          boh = e + 1
+        end
+        bol = eoh + CRLFlen*2
+      end
+      -- epilogue is processed, but not returned
+      local ct = headers["content-type"]
+      local b, err = string.sub(body, bol, eol-1)
+      if ct and ct:lower():find("^multipart/") then
+        b, err = parseMultipart(b, ct) -- handle multipart/* recursively
+        if not b then return b, err end
+      end
+      local first = parts.start and parts.start == headers["content-id"] and 1
+      local v = {name = name, headers = headers, filename = filename, data = b}
+      table.insert(parts, first or #parts+1, v)
+      if name then
+        if string.find(name, MULTIVAL) then
+          parts[name] = parts[name] or {}
+          table.insert(parts[name], first or #parts[name]+1, v)
+        else
+          parts[name] = parts[name] or v
+        end
+      end
+    end
+    local tail = body:sub(eob+1, eob+#TAIL)
+    -- check if the encapsulation or regular boundary is present
+    if tail == TAIL then break end
+    if tail ~= CRLF then return nil, "missing closing boundary at position "..eol end
+    bol = eob + #tail + 1
+  end
+  return parts
+end
+
 --[[-- template engine --]]--
 
 local templates, vars = {}, {}
@@ -385,7 +496,7 @@ local function setRoute(opts, handler)
         end
         if v.regex then v.regex = re.compile(v.regex) or argerror(false, 3, "(valid regex expected)") end
       elseif headerMap[k] then
-        opts[k] = {pattern = "%f[%w]"..v.."%f[%W]"}
+        opts[k] = {pattern = "%f[%w]"..quote(v).."%f[%W]"}
       end
     end
   end
@@ -491,6 +602,7 @@ local function matchRoute(path, req)
         if matched and route.handler then
           local res, more = route.handler(req)
           if res then return res, more end
+          path = rawget(req, "path") or path  -- assign path for subsequent checks
         end
       end
     end
@@ -499,38 +611,140 @@ end
 
 --[[-- storage engine --]]--
 
-local function makeStorage(dbname, sqlsetup)
+local NONE = {}
+local function makeStorage(dbname, sqlsetup, opts)
   local sqlite3 = require "lsqlite3"
-  local dbm = {prepcache = {}, name = dbname, sql = sqlsetup}
+  if type(sqlsetup) == "table" and opts == nil then
+    sqlsetup, opts = nil, sqlsetup
+  end
+  local flags = 0
+  for flagname, val in pairs(opts or {}) do
+    local flagcode = flagname:find("^OPEN_") and (
+      sqlite3[flagname] or error("unknown option "..flagname))
+    flags = flags | (val and flagcode or 0)
+  end
+  argerror(not opts or not opts.trace or type(opts.trace) == "function",
+    3 , "(function expected as trace option value)")
+  -- check if any of the required flags are set; set defaults if not
+  if flags & (sqlite3.OPEN_READWRITE + sqlite3.OPEN_READONLY) == 0 then
+    flags = flags | (sqlite3.OPEN_READWRITE + sqlite3.OPEN_CREATE)
+  end
+  local dbm = {NONE = NONE, prepcache = {}, pragmas = {},
+    name = dbname, sql = sqlsetup, opts = opts or {}}
   local msgdelete = "use delete option to force"
+
   function dbm:init()
     local db = self.db
     if not db then
       local code, msg
-      db, code, msg = sqlite3.open(self.name)
+      db, code, msg = sqlite3.open(self.name, flags)
       if not db then error(("%s (code: %d)"):format(msg, code)) end
-      if db:exec(self.sql) > 0 then error("can't setup db: "..db:errmsg()) end
+      if self.sql and db:exec(self.sql) > 0 then error("can't setup db: "..db:errmsg()) end
       self.db = db
     end
     -- simple __index = db doesn't work, as it gets `dbm` passed instead of `db`,
     -- so remapping is needed to proxy this to `t.db` instead
-    return setmetatable(self, {__index = function(t,k)
-          return sqlite3[k] or t.db[k] and function(self,...) return t.db[k](db,...) end
-        end})
+    return setmetatable(self, {
+      __index = function(t,k)
+          if sqlite3[k] then return sqlite3[k] end
+          local db = rawget(t, "db")
+          return db and db[k] and function(self,...) return db[k](db,...) end or nil
+      end,
+      __close = function(t) return t:close() end
+    })
   end
   local function norm(sql)
     return (sql:gsub("%-%-[^\n]*\n?",""):gsub("^%s+",""):gsub("%s+$",""):gsub("%s+"," ")
       :gsub("%s*([(),])%s*","%1"):gsub('"(%w+)"',"%1"))
   end
+  local function prepstmt(dbm, stmt)
+    if not dbm.prepcache[stmt] then
+      assert(dbm.db)
+      local st, tail = dbm.db:prepare(stmt)
+      -- if there is tail, then return as is, don't cache
+      if st and tail and #tail > 0 then return st, tail end
+      dbm.prepcache[stmt] = st
+    end
+    return dbm.prepcache[stmt]
+  end
+  function dbm:close()
+    if self.db then return self.db:close() end
+  end
+  local function fetch(self, query, one, ...)
+    if not self.db then self:init() end
+    local trace = self.opts.trace
+    local start = trace and getTimeNano()
+    local rows = {}
+    local stmt, tail = query, nil
+    repeat
+      if type(stmt) == "string" then
+        stmt, tail = prepstmt(self, stmt)
+      end
+      if not stmt then return nil, "can't prepare: "..self.db:errmsg() end
+      -- if the last statement is incomplete
+      if not stmt:isopen() then break end
+      if stmt:bind_values(...) > 0 then
+        return nil, "can't bind values: "..self.db:errmsg()
+      end
+      for row in stmt:nrows() do
+        table.insert(rows, row)
+        if one then break end
+      end
+      stmt:reset()
+      stmt = tail  -- get multi-statement ready for processing
+    until (one or not tail)
+    if trace then trace(self, query, {...}, getTimeDiff(start)) end
+    if one == nil then return self.db:changes() end  -- return execute results
+    -- return self.NONE instead of an empty table to indicate no rows
+    return not one and (rows[1] and rows or self.NONE) or rows[1] or self.NONE
+  end
+  local function exec(self, stmt, ...) return fetch(self, stmt, nil, ...) end
+  local function dberr(db) return nil, db:errmsg() end
+  function dbm:execute(list, ...)
+    -- if the first parameter is not table, use regular exec
+    if type(list) ~= "table" then return exec(self, list, ...) end
+    if not self.db then self:init() end
+    local db = self.db
+    local changes = 0
+    if db:exec("savepoint execute") ~= sqlite3.OK then return dberr(db) end
+    for _, sql in ipairs(list) do
+      if type(sql) ~= "table" then sql = {sql} end
+      local ok, err = exec(self, unpack(sql))
+      if not ok then
+        if db:exec("rollback to execute") ~= sqlite3.OK then return dberr(db) end
+        return nil, err
+      end
+      changes = changes + ok
+    end
+    if db:exec("release execute") ~= sqlite3.OK then return dberr(db) end
+    return changes
+  end
+  function dbm:fetchAll(stmt, ...) return fetch(dbm, stmt, false, ...) end
+  function dbm:fetchOne(stmt, ...) return fetch(dbm, stmt, true, ...) end
+  function dbm:pragma(stmt)
+    local pragma = stmt:match("[_%w]+")
+    if not self.pragmas[pragma] then
+      if self:fetchOne("select * from pragma_pragma_list() where name = ?",
+        pragma or "") == self.NONE then return nil, "missing or invalid pragma name" end
+      self.pragmas[pragma] = true
+    end
+    local row = self:fetchOne("PRAGMA "..stmt)
+    if not row then return nil, self.db:errmsg() end
+    return select(2, next(row)) or self.NONE
+  end
+  obsolete(dbm, "fetchone", "fetchOne", "0.40")
+  obsolete(dbm, "fetchall", "fetchAll", "0.40")
+
+  --[[-- dbm upgrade --]]--
+
   function dbm:upgrade(opts)
     opts = opts or {}
-    local actual = self.db or error("can't ungrade non initialized db")
-    local pristine = makeStorage(":memory:", self.sql).db
-    local sqltbl = [[SELECT name, sql FROM sqlite_master
-      WHERE type = "table" AND name not like "sqlite_%"]]
-    -- this PRAGMA is automatically disabled when the db is committed
-    local err
-    local changes = {}
+    local actual = self.db and self or error("can't ungrade non initialized db")
+    local pristine = makeStorage(":memory:", self.sql)
+    local sqltbl = [[SELECT name, sql FROM sqlite_schema
+      WHERE type = 'table' AND name not like 'sqlite_%']]
+    local ok, err
+    local changes, legacyalter = {}, false
     local actbl, prtbl = {}, {}
     for r in pristine:nrows(sqltbl) do prtbl[r.name] = r.sql end
     for r in actual:nrows(sqltbl) do
@@ -558,6 +772,7 @@ local function makeStorage(dbname, sqlsetup)
             :format(tmpname, cols, cols, r.name))
           table.insert(changes, ("DROP TABLE %s"):format(r.name))
           table.insert(changes, ("ALTER TABLE %s RENAME TO %s"):format(tmpname, r.name))
+          legacyalter = true
         end
       else
         if opts.delete == nil then
@@ -570,122 +785,73 @@ local function makeStorage(dbname, sqlsetup)
       end
     end
     if err then return nil, err end
+    -- `alter table` may require legacy_alter_table pragma
+    -- if depending triggers/views exist
+    -- see https://sqlite.org/forum/forumpost/0e2390093fbb8fd6
+    -- and https://www.sqlite.org/pragma.html#pragma_legacy_alter_table
+    if legacyalter then
+      table.insert(changes, 1, "PRAGMA legacy_alter_table=1")
+      table.insert(changes, "PRAGMA legacy_alter_table=0")
+    end
     for k in pairs(prtbl) do
       if not actbl[k] then table.insert(changes, prtbl[k]) end
     end
 
-    local sqlidx = [[SELECT name, sql FROM sqlite_master
-      WHERE type = "index" AND name not like "sqlite_%"]]
+    local sqlidx = [[SELECT name, sql, type FROM sqlite_schema
+      WHERE type in ('index', 'trigger', 'view')
+        AND name not like 'sqlite_%']]
     actbl, prtbl = {}, {}
-    for r in pristine:nrows(sqlidx) do prtbl[r.name] = r.sql end
+    for r in pristine:nrows(sqlidx) do
+      prtbl[r.type..r.name] = r.sql end
     for r in actual:nrows(sqlidx) do
-      actbl[r.name] = true
-      if prtbl[r.name] then
-        if r.sql ~= prtbl[r.name] then
-          table.insert(changes, ("DROP INDEX IF EXISTS %s"):format(r.name))
-          table.insert(changes, prtbl[r.name])
+      actbl[r.type..r.name] = true
+      if prtbl[r.type..r.name] then
+        if r.sql ~= prtbl[r.type..r.name] then
+          table.insert(changes, ("DROP %s IF EXISTS %s"):format(r.type, r.name))
+          table.insert(changes, prtbl[r.type..r.name])
         end
       else
-        table.insert(changes, ("DROP INDEX IF EXISTS %s"):format(r.name))
+        table.insert(changes, ("DROP %s IF EXISTS %s"):format(r.type, r.name))
       end
     end
     for k in pairs(prtbl) do
       if not actbl[k] then table.insert(changes, prtbl[k]) end
     end
 
-    local acpfk, prpfk = "0", "0"
     -- get the current value of `PRAGMA foreign_keys` to restore if needed
-    actual:exec("PRAGMA foreign_keys", function (u,c,v,n) acpfk = v[1] return 0 end)
+    local acpfk = assert(actual:pragma"foreign_keys")
     -- get the pristine value of `PRAGMA foreign_keys` to set later
-    pristine:exec("PRAGMA foreign_keys", function (u,c,v,n) prpfk = v[1] return 0 end)
+    local prpfk = assert(pristine:pragma"foreign_keys")
 
     if opts.integritycheck ~= false then
-      local row = self:fetchone("PRAGMA integrity_check(1)")
-      if row and row.integrity_check ~= "ok" then return nil, row.integrity_check end
-      -- check foreign key violations if the foreign key setting is enabled
-      row = prpfk ~= "0" and self:fetchone("PRAGMA foreign_key_check")
-      if row then return nil, "foreign key check failed" end
+      local ic = self:pragma"integrity_check(1)"
+      if ic ~= "ok" then return nil, ic end
+      -- check existing foreign key violations if the foreign key setting is enabled
+      local fkc = prpfk ~= "0" and self:pragma"foreign_key_check"
+      if fkc and fkc ~= self.NONE then return nil, "foreign key check failed" end
     end
     if opts.dryrun then return changes end
     if #changes == 0 then return changes end
 
     -- disable `pragma foreign_keys`, to avoid triggerring cascading deletes
-    local ok, err = self:exec("PRAGMA foreign_keys=0")
+    ok, err = self:pragma"foreign_keys=0"
     if not ok then return ok, err end
 
-    -- execute the changes
-    ok, err = self:execall(changes)
+    -- execute the changes (within a savepoint)
+    ok, err = self:execute(changes)
     -- restore `PRAGMA foreign_keys` value:
     -- (1) to the original value after failure
     -- (2) to the "pristine" value after normal execution
-    local pfk = "PRAGMA foreign_keys="..(ok and prpfk or acpfk)
-    if self:exec(pfk) and ok then table.insert(changes, pfk) end
+    local pfk = "foreign_keys="..(ok and prpfk or acpfk)
+    if self:pragma(pfk) and ok then table.insert(changes, "PRAGMA "..pfk) end
     if not ok then return ok, err end
 
     -- clean up the database
-    ok, err = self:exec("VACUUM")
+    ok, err = self:execute("VACUUM")
     if not ok then return ok, err end
     return changes
   end
-  function dbm:prepstmt(stmt)
-    if not self.prepcache[stmt] then
-      self.prepcache[stmt] = self.db:prepare(stmt)
-    end
-    return self.prepcache[stmt]
-  end
-  function dbm:close()
-    if not self.db then return end
-    local db = self.db
-    for code, stmt in pairs(self.prepcache) do
-      if stmt:finalize() > 0 then
-        error("can't finalize '"..code.."': "..db:errmsg())
-      end
-    end
-    return db:close()
-  end
-  function dbm:exec(stmt, ...)
-    if not self.db then self:init() end
-    local db = self.db
-    if type(stmt) == "string" then stmt = self:prepstmt(stmt) end
-    if not stmt then return nil, "can't prepare: "..db:errmsg() end
-    if stmt:bind_values(...) > 0 then return nil, "can't bind values"..db:errmsg() end
-    if stmt:step() ~= sqlite3.DONE then
-      return nil, "can't execute prepared statement: "..db:errmsg()
-    end
-    stmt:reset()
-    return db:changes()
-  end
-  local function fetch(self, stmt, one, ...)
-    if not self.db then self:init() end
-    local db = self.db
-    if type(stmt) == "string" then stmt = self:prepstmt(stmt) end
-    if not stmt then error("can't prepare: "..db:errmsg()) end
-    if stmt:bind_values(...) > 0 then error("can't bind values: "..db:errmsg()) end
-    local rows = {}
-    for row in stmt:nrows() do
-      table.insert(rows, row)
-      if one then break end
-    end
-    stmt:reset()
-    return not one and rows or rows[1]
-  end
-  function dbm:fetchall(stmt, ...) return fetch(dbm, stmt, false, ...) end
-  function dbm:fetchone(stmt, ...) return fetch(dbm, stmt, true, ...) end
-  function dbm:execall(list)
-    if not self.db then self:init() end
-    local db = self.db
-    db:exec("begin")
-    for _, sql in ipairs(list) do
-      if type(sql) ~= "table" then sql = {sql} end
-      local ok, err = self:exec(unpack(sql))
-      if not ok then
-        db:exec("rollback")
-        return nil, err
-      end
-    end
-    db:exec("commit")
-    return true
-  end
+
   return dbm:init()
 end
 
@@ -723,7 +889,7 @@ local function setHook(name, func)
   local isQualified = #suffix > 0
   if not func then
     -- remove the current hook if it's a fully qualified hook
-    if isQualified then table.remove(hooks[main], idx) end
+    if idx and isQualified then table.remove(hooks[main], idx) end
   else  -- set the new function
     local hook = {func, suffix}
     if idx and isQualified then  -- update existing qualified hook
@@ -835,7 +1001,7 @@ local validators = { msg = trueval, optional = trueval,
   oneof = function(s, list)
     if type(list) ~= "table" then list = {list} end
     for _, v in ipairs(list) do if s == v then return true end end
-    return nil, "%s must be one of: "..table.concat(list, ", ")
+    return nil, "%s must be one of: "..EncodeLua(list):sub(2, -2)
   end,
 }
 local function makeValidator(rules)
@@ -946,9 +1112,11 @@ local function error2tmpl(status, reason, message)
 end
 local function checkPath(path) return type(path) == "string" and path or GetPath() end
 local fm = setmetatable({ _VERSION = VERSION, _NAME = NAME, _COPYRIGHT = "Paul Kulchenko",
+  reg2x = reg2x, reg1p = reg1p,
   getBrand = function() return ("%s/%s %s/%s"):format("redbean", getRBVersion(), NAME, VERSION) end,
   setTemplate = setTemplate, setTemplateVar = setTemplateVar,
   setRoute = setRoute, setSchedule = setSchedule, setHook = setHook,
+  parseMultipart = parseMultipart,
   makeStorage = makeStorage,
   makePath = makePath, makeUrl = makeUrl,
   makeBasicAuth = makeBasicAuth, makeIpMatcher = makeIpMatcher,
@@ -970,10 +1138,16 @@ local fm = setmetatable({ _VERSION = VERSION, _NAME = NAME, _COPYRIGHT = "Paul K
     return function() return error2tmpl(status, reason, msg) end
   end,
   serveContent = function(tmpl, params) return function() return render(tmpl, params) end end,
-  serveRedirect = function(loc, status) return function()
+  serveRedirect = function(status, loc) return function()
       -- if no status or location is specified, then redirect to the original URL with 303
       -- this is useful for switching to GET after POST/PUT to an endpoint
       -- in all other cases, use the specified status or 307 (temp redirect)
+      local ts, tl = type(status), type(loc)
+      -- swap parameters if needed (as they used to be in a different order before 0.368)
+      -- and also allow both status and location be optional
+      if (ts == "string" or ts == "nil") and (tl == "nil" or tl == "number") then
+        status, loc = loc, status
+      end
       return ServeRedirect(status or loc and 307 or 303, loc or GetPath()) end end,
   serveResponse = serveResponse,
 }, {__index =
@@ -1090,21 +1264,40 @@ end
 local function hcall(func, ...)
   local co = type(func) == "thread" and func or coroutine.create(func)
   local ok, res, more = coroutine.resume(co, ...)
-  if ok then
+  -- return normally on successful execution or an unsuccessful one
+  -- that returns a function (to allow calling `error(fm.serve404)`)
+  if ok or type(res) == "function" then
     return coroutine.status(co) == "suspended" and co or false, res, more
   end
   local err = debug.traceback(co, res)
   Log(kLogError, logFormat("Lua error: %s", err))
   return false, error2tmpl(500, nil, IsLoopbackIp(GetRemoteAddr()) and err or nil)
 end
+local MPKEY = "multipart"
 local function handleRequest(path)
   path = path or GetPath()
   req = setmetatable({
-      params = setmetatable({}, {__index = function(_, k)
-            if not HasParam(k) then return end
-            -- GetParam may return `nil` for empty parameters,
-            -- like `foo` in `foo&bar=1`, but need to return `false` instead
-            if not string.find(k, "%[%]$") then return GetParam(k) or false end
+      params = setmetatable({}, {__index = function(t, k)
+            local mk = k.."[]" -- if the multi-key exists, then use it instead
+            if not HasParam(k) and HasParam(mk) then k = mk end
+            if not HasParam(k) and not rawget(t, MPKEY) then
+              local ct = GetHeader("Content-Type")
+              if not ct or not string.find(ct, "^multipart/") then return end
+              -- check the multipart body for the requested parameter
+              t[MPKEY] = parseMultipart(GetBody(), ct)
+              -- return pseudo parameter with the parsed multipart message;
+              -- subsequent calls will retrieve it from the table directly
+              if k == MPKEY then return t[MPKEY] end
+            end
+            local mp = rawget(t, MPKEY)
+            if mp then
+              local m = mp[k] or mp[mk]
+              -- if a multipart parameter, then return individual value or list of elements
+              if m then return m.data or m end
+            end
+            -- GetParam may return `nil` for empty parameters (`foo` in `foo&bar=1`),
+            -- but `params` needs to return `false` instead
+            if not string.find(k, MULTIVAL) then return GetParam(k) or false end
             local array={}
             for _, v in ipairs(GetParams()) do
               if v[1] == k then table.insert(array, v[2] or false) end
@@ -1176,10 +1369,16 @@ end
 fm.streamResponse = streamWrap(fm.serveResponse)
 fm.streamContent = streamWrap(fm.serveContent)
 
-local tests -- forward declaration
-local function run(opts)
+-- add internal functions for test support
+fm.test = {
+  reqenv = reqenv, route2regex = route2regex, routes = routes,
+  matchRoute = matchRoute, handleRequest = handleRequest, getRequest = getRequest,
+  headerMap = headerMap, detectType = detectType, matchCondition = matchCondition,
+  setSession = setSession,
+}
+
+function fm.run(opts)
   opts = opts or {}
-  if opts.tests and tests then tests(); os.exit() end
   ProgramBrand(fm.getBrand())
   -- configure logPath first to capture all subsequent messages
   -- in the log file, as the order is randomized otherwise
@@ -1201,7 +1400,10 @@ local function run(opts)
         local func = _G[name]
         argerror(type(func) == "function", 1,
           ("(unknown option '%s' with value '%s')"):format(key, v))
-        for _, val in pairs(type(v) == "table" and v or {v}) do func(val) end
+        for _, val in pairs(type(v) == "table" and v or {v}) do
+          -- accept a table to pass multiple values and unpack it
+          func(unpack(type(val) ~= "table" and {val} or val))
+        end
       end
     end
   end
@@ -1227,9 +1429,8 @@ local function run(opts)
   collectgarbage() -- clean up no longer used memory to reduce image size
 end
 
--- assign the rest of the methods
-fm.run = run
-
+-- setTemplate will do some logging, so provide the log function
+-- if this is executed outside of redbean
 Log = Log or function() end
 
 fm.setTemplate("fmt", {
@@ -1350,824 +1551,142 @@ fm.setTemplate("html", {
       for _, v in pairs(val) do writeVal(v) end
     end,
   }, {autotag = true})
-
---[[-- various tests --]]--
-
-tests = function()
-  local out = ""
-  reqenv.write = function(s) out = out..s end
-  Write = reqenv.write
-
-  local isRedbean = ProgramBrand ~= nil
-  if not isRedbean then
-    re = {compile = function(exp) return {search = function(self, path)
-          local res = {path:match(exp)}
-          if #res > 0 then table.insert(res, 1, path) end
-          return unpack(res)
-        end}
-      end}
-    EscapeHtml = function(s)
-      return (string.gsub(s, "&", "&amp;"):gsub('"', "&quot;"):gsub("<","&lt;"):gsub(">","&gt;"):gsub("'","&#39;"))
-    end
-    FormatHttpDateTime = function(s) return os.date("%a, %d %b %Y %X GMT", s) end
-    ParseIp = function(str)
-      local v1, v2, v3, v4 = str:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
-      return (v1 and (tonumber(v1) << 24) + (tonumber(v2) << 16) + (tonumber(v3) << 8) + tonumber(v4)
-        or -1) -- match ParseIp logic in redbean
-    end
-    reqenv.escapeHtml = EscapeHtml
-  end
-
-  -- provide methods not available outside of Redbean or outside of request handling
-  SetStatus = function() end
-  SetHeader = function() end
-  ServeError = function() end
-  IsLoopbackIp = function() return true end
-  GetRemoteAddr = function() end
-  GetHttpReason = function(status) return tostring(status).." reason" end
-  Log = function(_, ...) print("#", ...) end
-
-  local num, success = 0, 0
-  local section = ""
-  local function outformat(s) return type(s) == "string" and ("%q"):format(s):gsub("\n","n") or tostring(s) end
-  local function is(result, expected, message)
-    local ok = result == expected
-    num = num + 1
-    success = success + (ok and 1 or 0)
-    local msg = ("%s %d\t%s%s%s"):format((ok and "ok" or "not ok"), num,
-      (section > "" and section.." " or ""), message or "",
-      ok and "" or " at line "..debug.getinfo(2).currentline
-    )
-    if not ok then
-      msg = msg .. ("\n\treceived: %s\n\texpected: %s"):format(outformat(result), outformat(expected))
-    end
-    print(msg)
-    out = ""
-  end
-  local function rt(opt)
-    local saved = {}
-    for f, v in pairs(opt) do
-      if type(f) == "string" then saved[f], _G[f] = _G[f], v end
-    end
-    for _, test in ipairs(opt) do test() end
-    for f, v in pairs(saved) do _G[f] = v end
-  end
-  local function done() print(("1..%d # Passed %d/%d"):format(num, success, num)) end
-
-  --[[-- template engine tests --]]--
-
-  section = "(template)"
-  local tmpl1 = "tmpl1"
-  fm.setTemplate(tmpl1, "Hello, World!")
-  fm.render(tmpl1)
-  is(out, "Hello, World!", "text rendering")
-
-  fm.setTemplate(tmpl1, "Hello, {%& title %}!")
-  fm.render(tmpl1, {title = "World"})
-  is(out, "Hello, World!", "text with parameter")
-
-  fm.render(tmpl1, {title = "World&"})
-  is(out, "Hello, World&amp;!", "text with encoded parameter")
-
-  fm.render(tmpl1, {})
-  is(out, "Hello, !", "text with missing enscaped parameter")
-
-  fm.setTemplate(tmpl1, "Hello, {% for i, v in ipairs({3,2,1}) do %}-{%= v %}{% end %}")
-  fm.render(tmpl1)
-  is(out, "Hello, -3-2-1", "Lua code")
-
-  local tmpl2 = "tmpl2"
-  fm.setTemplate(tmpl2, [[{a: "{%= title %}"}]])
-  fm.render(tmpl2)
-  is(out, '{a: ""}', "JSON with missing non-escaped parameter")
-
-  do
-    fm.setTemplate(tmpl2, [[{a: "{%= title %}"}]], {title = "set when adding template"})
-    fm.render(tmpl2)
-    is(out, '{a: "set when adding template"}', "JSON with value set when adding template")
-
-    fm.render(tmpl2, {title = "set from render"})
-    is(out, '{a: "set from render"}', "JSON with a passed value set at rendering")
-
-    fm.render(tmpl2)
-    is(out, '{a: "set when adding template"}',
-      "JSON with value set when adding template (after another assignment)")
-
-    fm.setTemplate(tmpl2, [[{% local title = "set from template" %}{a: "{%= title %}"}]])
-    fm.render(tmpl2)
-    is(out, '{a: "set from template"}', "JSON with value set from template")
-
-    fm.setTemplateVar("num", 123)
-    fm.setTemplateVar("fun", function() return "abc" end)
-    fm.setTemplate(tmpl2, "{%= vars.num %}{%= vars.fun() %}")
-    fm.render(tmpl2)
-    is(out, '123abc', "templates vars are set with numbers and functions")
-  end
-
-  fm.setTemplate(tmpl2, [[{a: "{%= title %}"}]], {title = "set when adding"})
-  fm.setTemplate(tmpl1, "Hello, {% render('tmpl2') %}")
-  fm.render(tmpl1)
-  is(out, [[Hello, {a: "set when adding"}]], "`include` other template with a local value")
-
-  fm.setTemplate(tmpl1, [[Hello, {% render('tmpl2', {title = "value"}) %}]])
-  fm.render(tmpl1)
-  is(out, [[Hello, {a: "value"}]], "`include` other template with passed value set at rendering")
-
-  fm.setTemplate(tmpl1, "Hello, World!\n{% something.missing() %}")
-  local ok, err = pcall(render, tmpl1)
-  is(err ~= nil, true, "report Lua error in template")
-  is(err:match('tmpl1:'), 'tmpl1:', "error references original template name")
-  is(err:match(':2: '), ':2: ', "error references expected line number")
-
-  fm.setTemplate(tmpl1, "{%if title then%}full{%else%}empty{%end%}")
-  fm.render(tmpl1)
-  is(out, "empty", "`if` checks for an empty parameter")
-
-  fm.render(tmpl1, {title = ""})
-  is(out, "full", "`if` checks for a non-empty parameter")
-
-  fm.setTemplate(tmpl1, "Hello, {% main() %}World!", {main = function() end})
-  fm.render(tmpl1)
-  is(out, [[Hello, World!]], "used function can be passed when adding template")
-
-  rt({
-      GetZipPaths = function() return {"/views/hello1.fmt", "/views/hello2.fmg"} end,
-      LoadAsset = function(s) return ({
-          ["/views/hello1.fmt"] = "Hello, {%& title %}",
-          ["/views/hello2.fmg"] = [[{ h1{"Hello, ", title} }]],
-          ["/views/hello3.aaa"] = "Hello",
-        })[s] end,
-      function()
-        local tmpls = fm.setTemplate({"/views/", fmt = "fmt", fmg = "html"})
-        is(tmpls["hello1"], true, "setTemplate for a folder returns list of templates 1/2")
-        is(tmpls["hello2"], true, "setTemplate for a folder returns list of templates 2/2")
-        fm.render("hello1", {title = "value 1"})
-        is(out, [[Hello, value 1]], "rendered default template loaded from an asset")
-        fm.render("hello2", {title = "value 2"})
-        is(out, [[<h1>Hello, value 2</h1>]], "rendered html generator template loaded from an asset")
-        local _, err = pcall(render, "hello3")
-        is(err:match("unknown template name"), "unknown template name", "only specified extensions loaded from an asset")
-
-        fm.setTemplate({"/", fmt = "fmt", fmg = "html"})
-        fm.render("views/hello1", {title = "value 1"})
-        is(out, [[Hello, value 1]], "rendered default template loaded from an asset with folder name")
-        fm.render("views/hello2", {title = "value 2"})
-        is(out, [[<h1>Hello, value 2</h1>]], "rendered html generator template loaded from an asset with folder name")
-      end,
-    })
-
-  --[[-- routing engine tests --]]--
-
-  section = "(routing)"
-  is(route2regex("/foo/bar"), "^/foo/bar$", "simple route")
-  is(route2regex("/foo/:bar"), "^/foo/([^/]+)$", "route with a named parameter")
-  is(route2regex("/foo/:bar_none/"), "^/foo/([^/]+)/$", "route with a named parameter with underscore")
-  is(route2regex("/foo(/:bar)"), "^/foo(/([^/]+))?$", "route with a named optional parameter")
-  is(route2regex("/foo/:bar[%d]"), "^/foo/([0-9]+)$", "route with a named parameter and a customer set")
-  is(route2regex("/foo/:bar[^%d]"), "^/foo/([^0-9]+)$", "route with a named parameter and not-in-set")
-  is(route2regex("/foo/:bar[]5]"), "^/foo/([]5]+)$", "route with a starting closing bracket in a set")
-  is(route2regex("/foo/:bar[]5].:some"), "^/foo/([]5]+)\\.([^/]+)$", "route with a closing bracket in a set followed by another parameter")
-  is(route2regex("/foo/:bar[^]5]"), "^/foo/([^]5]+)$", "route with a starting closing bracket in not-in-set")
-  is(route2regex("/foo/:bar[1%]2%-%+]"), "^/foo/([1[.].]2[.-.]+]+)$", "route with a closed bracked")
-  is(route2regex("/foo(/:bar(/:more))"), "^/foo(/([^/]+)(/([^/]+))?)?$", "route with two named optional parameters")
-  is(route2regex("/foo(/:bar)/*.zip"), "^/foo(/([^/]+))?/(.*)\\.zip$", "route with an optional parameter and a splat")
-  is(route2regex("/foo(/:bar)/*splat.zip"), "^/foo(/([^/]+))?/(.*)\\.zip$", "route with an optional parameter and a named splat")
-  is(select(2, pcall(route2regex, "/foo/:bar[%o]")):match(": (.+)"), "Invalid escape sequence %o",
-    "route with invalid sequence is reported")
-  local _, params = route2regex("foo(/:bar)/*.zip")
-  is(params[1], false, "'foo(/:bar)/*.zip' - parameter 1 is optional")
-  is(params[2], "bar", "'foo(/:bar)/*.zip' - parameter 2 is 'bar'")
-  is(params[3], "splat", "'foo(/:bar)/*.zip' - parameter 3 is 'splat'")
-
-  local handler = function() end
-  fm.setRoute("/foo/bar", handler)
-  local index = routes["/foo/bar"]
-  is(routes[index].handler, handler, "assign handler to a regular route")
-  fm.setRoute("/foo/bar")
-  is(routes["/foo/bar"], index, "route with the same name is not added")
-  is(routes[routes["/foo/bar"]].handler, nil, "assign no handler to a static route")
-  fm.setRoute(fm.PUT"/foo/bar")
-  is(routes["/foo/bar"], index+1, "route with the same name and different method is added")
-
-  local route = "/foo(/:bar(/:more[%d]))(.:ext)/*.zip"
-  fm.setRoute(route, function(r)
-      is(r.params.bar, "some", "[1/4] default optional parameter matches")
-      is(r.params.more, "123", "[2/4] customer set matches")
-      is(r.params.ext, "myext", "[3/4] optional extension matches")
-      is(r.params.splat, "mo/re", "[4/4] splat matches path separators")
-    end)
-  matchRoute("/foo/some/123.myext/mo/re.zip", {params = {}})
-  fm.setRoute(route, function(r)
-      is(r.params.bar, "some.myext", "[1/4] default optional parameter matches dots")
-      is(not r.params.more, true, "[2/4] missing optional parameter gets `false` value")
-      is(not r.params.ext, true, "[3/4] missing optional parameter gets `false` value")
-      is(r.params.splat, "more", "[4/4] splat matches")
-    end)
-  matchRoute("/foo/some.myext/more.zip", {params = {}})
-  if isRedbean then
-    local called = false
-    fm.setRoute(route, function() called = true end)
-    matchRoute("/foo/some.myext/more", {params = {}})
-    is(called, false, "non-matching route handler is not called")
-  end
-
-  do
-    local rp = RoutePath
-    local gm = GetAssetMode
-
-    GetAssetMode = function() return nil end
-
-    local status
-    SetStatus = function(s) status = s end
-    fm.setRoute("/*path", "/asset/*path")
-    handleRequest("/nofail") -- GetAssetMode returns `nil`
-    is(status, 404, "Hanler doesn't fail on missing resource")
-
-    GetAssetMode = function(m) return m:find("/$") and 2^14 or 2^15 end
-
-    local path
-    RoutePath = function(s) path = s; return s ~= nil end
-    fm.setRoute("/*path", "/asset/*path")
-    handleRequest("/")
-    is(path, nil, "Directory is not returned for empty parameter with internal routing")
-
-    fm.setRoute("/*path", "/*path.lua")
-    -- confirm that forwarded existing path is returned
-    RoutePath = function(s) path = s; return s ~= nil end
-    handleRequest("/foo/some.myext/more")
-    is(path, "/foo/some.myext/more.lua", "Forwarded path is returned for internal routing")
-
-    -- confirm that 404 is returned if nothing is matched
-    RoutePath = function() return false end
-    handleRequest("/foo/some.myext/more")
-    is(status, 404, "No match in forwarded path sets 404")
-
-    fm.setRoute("/*path") -- remove the path from subsequent matching
-    GetAssetMode = gm
-    RoutePath = rp
-  end
-
-  is(headerMap.CacheControl, "Cache-Control", "Cache-Control header is mapped")
-  is(headerMap.IfRange, "If-Range", "If-Range header is mapped")
-  is(headerMap.Host, "Host", "Host header is mapped")
-  is(headerMap.RetryAfter, "Retry-After", "Retry-After header is mapped")
-
-  is(detectType("  <"), "text/html", "auto-detect html content")
-  is(detectType("{"), "application/json", "auto-detect json content")
-  is(detectType("abc"), "text/plain", "auto-detect text content")
-
-  section = "(matchAttr)"
-
-  is(matchCondition("GET", "GET"), true, "attribute matches based on simple value")
-  is(matchCondition("GET", {GET = true}), true, "attribute matches based on simple value in condition table")
-  is(matchCondition("GET", {}), false, "non-existing attribute doesn't match")
-  is(matchCondition(nil, "GET"), false, "`nil` value doesn't match a simple value")
-  is(matchCondition(nil, {GET = true}), true, "`nil` value matches a value in condition table")
-  is(matchCondition("GET", {GET = true, POST = true}), true,
-    "attribute matches based on simple value in condition table (among other values)")
-  is(matchCondition("text/html; charset=utf-8", {regex = re.compile("text/")}), true, "attribute matches based on regex")
-  is(matchCondition("text/html; charset=utf-8", {pattern = "%f[%w]text/html%f[%W]"}), true, "attribute matches based on Lua pattern")
-  is(matchCondition("GET", "POST"), false, "attribute doesn't match another simple value")
-  is(matchCondition("GET", {POST = true}), false, "attribute doesn't match if not present in condition table")
-  is(matchCondition("text/html; charset=utf-8", {regex = re.compile("text/plain")}), false, "attribute doesn't match another regex")
-  is(matchCondition(nil, function() return true end), true, "`nil` value matches function that return `true`")
-  is(matchCondition(nil, function() return false end), false, "`nil` value doesn't match function that return `false`")
-  is(matchCondition("GET", function() return true end), true, "attribute matches function that return `true`")
-  is(matchCondition("GET", function() return false end), false, "attribute doesn't match function that return `false`")
-  is(matchCondition("GET", {function() return true end}), true,
-    "attribute matches function in condition table that return `true`")
-  is(matchCondition("GET", {function() return false end}), false,
-    "attribute doesn't match function in condition table that return `false`")
-
-  fm.setRoute({"acceptencoding", AcceptEncoding = "gzip"})
-  is(routes[routes.acceptencoding].options.AcceptEncoding.pattern, "%f[%w]gzip%f[%W]", "known header generates pattern-based match")
-
-  is(rawget(fm, "GET"), nil, "GET doesn't exist before first use")
-  local groute = fm.GET"route"
-  is(rawget(fm, "GET"), fm.GET, "GET is cached after first use")
-  is(type(groute), "table", "GET method returns condition table")
-  is(groute.method, "GET", "GET method sets method")
-  is(groute[1], "route", "GET method sets route")
-
-  local proute = fm.POST{"route", more = "parameters"}
-  is(type(proute), "table", "POST method on a table returns condition table")
-  is(proute.method, "POST", "POST method on a table sets method")
-  is(proute.more, "parameters", "POST method on a table preserves existing conditions")
-
-  --[[-- schedule engine tests --]]--
-
-  section = "(schedule)"
-  do local res={}
-    OnServerHeartbeat = function() res.hook = true end
-    fm.setSchedule("* * * * *", function() res.everymin = true end, {sameProc = true})
-    fm.setSchedule{"*/2 * * * *", function() res.everyothermin = true end, sameProc = true}
-    fm.setHook("OnServerHeartbeat.testhook", function() res.hookcalls = true end)
-    GetTime = function() return 1*60 end
-    OnServerHeartbeat()
-    is(res.everymin, true, "* is called on minute 1")
-    is(res.everyothermin, nil, "*/2 is not called on minute 1")
-    is(res.hook, true, "'original' hook is called as well")
-    is(res.hookcalls, true, "setHook sets hook that is then called")
-    res={}
-    GetTime = function() return 2*60 end
-    fm.setHook("OnServerHeartbeat.testhook")  -- remove hook
-    OnServerHeartbeat()
-    is(res.everymin, true, "* is called on minute 2")
-    is(res.everyothermin, true, "*/2 is called on minute 2")
-    is(res.hookcalls, nil, "setHook removes hook that is then not called")
-  end
-
-  --[[-- request tests --]]--
-
-  -- headers processing (retrieve and set)
-  GetHeader = function() return "text/plain" end
-  GetPath = function() return "/" end
-  EncodeJson = function() return "" end
-  handleRequest("")
-  local r = getRequest()
-  is(r.headers.ContentType, "text/plain", "ContentType header retrieved")
-  do local header, value
-    SetHeader = function(h,v) header, value = h, v end
-
-    fm.setRoute("/", function(r) r.headers.ContentLength = 42; return true end)
-    handleRequest()
-    is(value, nil, "Content-Length header is not allowed to be set")
-
-    fm.setRoute("/", function(r) r.headers.ContentType = "text/plain"; return true end)
-    handleRequest()
-    is(header, "Content-Type", "Header is remaped to its full name")
-    is(value, "text/plain", "Header is set to its correct value")
-
-    fm.setRoute("/", function(r) r.headers.RetryAfter = 5; return true end)
-    handleRequest()
-    is(value, "5", "Header with numeric value is allowed to be set")
-
-    fm.setTemplate(tmpl2, function() return "text", {foo = "bar"} end)
-    fm.setRoute("/", fm.serveContent(tmpl2))
-    handleRequest()
-    is(out, 'text', "template returns text directly")
-    is(header, 'foo', "template returns set of headers (name)")
-    is(value, 'bar', "template returns set of headers (value)")
-
-    fm.setRoute("/", fm.serveContent("sse", {data = "Line 1\nLine 2"}))
-    handleRequest()
-    is(out, "data: Line 1\ndata: Line 2\n\n", "SSE template with data element")
-
-    fm.setTemplate(tmpl2, {[[{a: "{%= title %}"}]], ContentType = "application/json"})
-    fm.setRoute("/", fm.serveContent(tmpl2))
-    handleRequest()
-    is(out, '{a: ""}', "JSON template with options and empty local value")
-    is(header, 'Content-Type', "custom template with options sets Content-Type")
-    is(value, 'application/json', "custom template with options sets expected Content-Type")
-
-    fm.setRoute("/", function() return fm.serveContent("json", {}) end)
-    handleRequest()
-    is(header, 'Content-Type', "preset template with options sets Content-Type")
-    is(value, 'application/json', "preset template with options sets expected Content-Type")
-
-    fm.setRoute("/", fm.serveContent("html",
-        {{"h1", "Title"}, {"div", a = 1, {"p", checked = true, "text"}}}))
-    handleRequest()
-    is(out, [[<h1>Title</h1><div a="1"><p checked="checked">text</p></div>]],
-      "preset template with html generation")
-
-    fm.setTemplate(tmpl1, {type = "html", [[{
-            doctype, body{h1{title}, "<!>", raw"<!-- -->"},
-            div{hx={post="url"}},
-            {"script", "a<b"}, p"text",
-            table{style=raw"b<a", tr{td"3", td"4", td{table.concat({1,2}, "")}}},
-            table{"more"}, p{"1"..notitle}, br,
-            each{function(v) return p{v} end, {3,2,1}},
-            {"div", a = "\"1'", p{"text+", include{"tmpl2", {title = "T"}}}},
-            {"iframe", function() return raw{p{1},p{2},p{3}} end},
-          }]]})
-    fm.setRoute("/", fm.serveContent(tmpl1, {title = "post title"}))
-    handleRequest()
-    is(out, "<!doctype html><body><h1>post title</h1>&lt;!&gt;<!-- --></body>"
-      .."<div hx-post=\"url\"></div><script>a<b</script><p>text</p>"
-      .."<table style=\"b<a\"><tr><td>3</td><td>4</td><td>12</td></tr></table>"
-      .."<table>more</table><p>1</p><br/><p>3</p><p>2</p><p>1</p>"
-      .."<div a=\"&quot;1&#39;\"><p>text+{a: \"T\"}</p></div>"
-      .."<iframe><p>1</p><p>2</p><p>3</p></iframe>",
-      "preset template with html generation")
-
-    fm.setTemplate(tmpl1, fm.serveContent("html", {{"h1", "Title"}}))
-    fm.setRoute("/", fm.serveContent(tmpl1))
-    handleRequest()
-    is(out, "<h1>Title</h1>")
-
-    fm.setTemplate(tmpl1, {type = "html", [[{{"h1", title}}]]})
-    fm.setRoute("/", fm.serveContent(tmpl1, {title = "post title"}))
-    handleRequest()
-    is(out, "<h1>post title</h1>")
-
-    for k,v in pairs{text = "text/plain", ["{}"] = "application/json", ["<br>"] = "text/html"} do
-      fm.setRoute("/", function() return k end)
-      handleRequest()
-      is(value, v, v.." value is auto-detected after being returned")
-
-      fm.setRoute("/", fm.serveResponse(200, k))
-      handleRequest()
-      is(value, v, v.." value is auto-detected after serveResponse")
-    end
-
-    fm.setRoute("/", fm.serveResponse(200, {ContentType = "text/html"}, "text"))
-    handleRequest()
-    is(value, "text/html", "explicitly set content-type takes precedence over auto-detected one")
-
-    fm.setRoute("/", fm.serveResponse("response text"))
-    handleRequest()
-    is(out, "response text", "serve response with text only")
-
-    fm.setTemplate(tmpl2, {[[no content-type]]})
-    fm.setRoute("/", fm.serveContent(tmpl2))
-    value = nil
-    handleRequest()
-    is(value, nil, "template with no content-type doesn't set content type")
-
-    local routeNum = #routes
-    fm.setRoute({"/route1", "/route2", method = "GET", routeName = "routeOne"}, fm.serve404)
-    is(routes["/route1"], routeNum+1, "mutiple routes can be added 1/2")
-    is(routes["/route2"], routeNum+2, "mutiple routes can be added 2/2")
-    is(routes.routeOne, routes["/route1"], "first route (our of several) gets name assigned")
-  end
-
-  -- cookie processing (retrieve and set)
-  GetCookie = function() return "cookie value" end
-  is(r.cookies.MyCookie, "cookie value", "Cookie value retrieved")
-  do local cookie, value, options
-    SetCookie = function(c,v,o)
-      cookie, value, options = c, v, {}
-      for k,v in pairs(o) do options[k] = v end
-    end
-    fm.setRoute("/", function(r) r.cookies.MyCookie = "new value"; return true end)
-    handleRequest()
-    is(cookie, "MyCookie", "Cookie is processed when set")
-    is(value, "new value", "Cookie value is set")
-
-    fm.setRoute("/", function(r) r.cookies.MyCookie = {"new value", secure = true}; return true end)
-    handleRequest()
-    is(value, "new value", "Cookie value is set (even with options)")
-    is(options.secure, true, "Cookie option is set")
-
-    fm.setRoute("/", function(r) r.cookies.MyCookie = false; return true end)
-    handleRequest()
-    is(cookie, "MyCookie", "Deleted cookie is processed when set to `false` (value)")
-    is(value, "", "Deleted cookie gets empty value (value)")
-    is(options.maxage, 0, "Deleted cookie gets MaxAge set to 0 (value)")
-
-    fm.setRoute("/", function(r) r.cookies.MyCookie = {false, secure = true}; return true end)
-    handleRequest()
-    is(value, "", "Deleted cookie gets empty value (table)")
-    is(options.maxage, 0, "Deleted cookie gets MaxAge set to 0 (table)")
-    is(options.secure, true, "Deleted cookie gets option set (table)")
-
-    if isRedbean then
-      fm.sessionOptions.secret = ""
-      setSession({a=""})
-      is(cookie, "fullmoon_session")
-      is(value, "e2E9IiJ9.lua.SHA256.AYDGTB6O7W4ohlbpRtgvY2NiDFUdS1efkd0ZpROoL+Q=")
-    end
-  end
-
-  fm.setRoute("/", function(r)
-      is(type(r.escapeHtml), "function", "escapeHtml function is available")
-      is(type(r.escapePath), "function", "escapePath function is available")
-      is(type(r.formatIp), "function", "formatIp function is available")
-      is(type(r.formatHttpDateTime), "function", "formatHttpDateTime function is available")
-    end)
-  if isRedbean then handleRequest() end
-
-  --[[-- makePath tests --]]--
-
-  section = "(makePath)"
-  route = "/foo(/:bar(/:more[%d]))(.:ext)/*.zip"
-  do local rname
-    LogWarn = function(_, n) rname = n end
-    fm.setRoute({"/something/else", routeName = "foobar"})
-    fm.setRoute({route, routeName = "foobar"})
-    is(rname, "foobar", "duplicate route with the same routeName triggers warning")
-  end
-  is(routes.foobar, routes[route], "route name can be used as alias")
-  is(routes[routes.foobar].routeName, nil, "route name is removed from conditions")
-
-  _, err = pcall(fm.makePath, route)
-  is(err:match("missing required parameter splat"), "missing required parameter splat", "required splat is checked")
-  _, err = pcall(fm.makePath, "/foo/:bar")
-  is(err:match("missing required parameter bar"), "missing required parameter bar", "required parameter is checked")
-  is(fm.makePath(route, {splat = "name"}), "/foo/name.zip", "required splat is filled in")
-  is(fm.makePath("/assets/*asset", {asset = false}), "/assets/", "empty splat is filled in")
-  is(fm.makePath("/foo/*more/*splat.zip", {more = "some", splat = "name"}), "/foo/some/name.zip",
-    "multiple required splats are filled in when specified")
-  is(fm.makePath("/foo/*more/*.zip", {more = "some", splat = "name"}), "/foo/some/name.zip",
-    "multiple required splats are filled in when under-specified")
-  is(fm.makePath("foobar", {splat = "name"}), makePath(route, {splat = "name"}),
-    "`makePath` by name and route produce same results")
-  is(fm.makePath(route, {splat = "name", more = "foo"}), "/foo/name.zip",
-    "missing optional parameter inside another missing parameter is removed")
-  is(fm.makePath(route, {splat = "name", bar = "some"}), "/foo/some/name.zip", "single optional parameter is filled in")
-  is(fm.makePath(route, {splat = "name", bar = "some", more = 12, ext = "json"}), "/foo/some/12.json/name.zip",
-    "multiple optional parameters are filled in")
-  is(fm.makePath("/foo/:bar", {bar = "more"}), "/foo/more", "unregistered route is handled")
-  is(fm.makePath("/foo(/*.zip)"), "/foo", "optional splat is not required")
-  is(fm.makePath("/foo(/*.zip)", {splat = "more"}), "/foo/more.zip", "optional splat is filled in")
-  is(fm.makePath("/foo"), "/foo", "relative route generates absolute path")
-  is(fm.makePath("/foo"), "/foo", "absolute route generates absolute path")
-
-  is(fm.makePath("http://some.website.com:8080/:foo?param=:bar", {foo = "some", bar = 123}),
-    "http://some.website.com:8080/some?param=123", "external/static path")
-
-  -- test using makePath from a template
-  fm.setTemplate(tmpl1, "Hello, {%= makePath('foobar', {splat = 'name'}) %}")
-  fm.render(tmpl1)
-  is(out, [[Hello, /foo/name.zip]], "`makePath` inside template")
-
-  --[[-- makeUrl tests --]]--
-
-  section = "(makeUrl)"
-  if isRedbean then
-    local url = "http://domain.com/path/more/name.ext?param1=val1&param2=val2#frag"
-    GetUrl = function() return url end
-    is(makeUrl(), url, "makeUrl produces original url")
-    is(makeUrl({path = "/short"}), url:gsub("/path/more/name.ext", "/short"), "makeUrl uses path")
-    is(makeUrl({scheme = "https"}), url:gsub("http:", "https:"), "makeUrl uses scheme")
-    is(makeUrl({fragment = "newfrag"}), url:gsub("#frag", "#newfrag"), "makeUrl uses fragment")
-    is(makeUrl({fragment = false}), url:gsub("#frag", ""), "makeUrl removes fragment")
-    is(makeUrl("", {path = "/path", params = {{"a", 1}, {"b", 2}, {"c"}}}), "/path?a=1&b=2&c",
-      "makeUrl generates path and query string")
-    is(makeUrl("", {params = {a = 1, b = "", c = true, ["d[1][name]"] = "file" }}),
-      "?a=1&b=&c&d%5B1%5D%5Bname%5D=file", "makeUrl generates query string from hash table")
-
-    -- test using makeUrl from a template
-    -- confirm that the URL is both url (%xx) and html (&...) escaped
-    fm.setTemplate(tmpl1, "Hello, {%& makeUrl({path = '<some&/path>'}) %}")
-    fm.render(tmpl1)
-    is(out, [[Hello, http://domain.com/%3Csome&amp;/path%3E?param1=val1&amp;param2=val2#frag]],
-      "`makeUrl` inside template")
-  end
-
-  --[[-- serve* tests --]]--
-
-  local status
-  SetStatus = function(s) status = s end
-  local url = "/status"
-  GetPath = function() return url end
-
-  section = "(serveError)"
-  fm.setRoute("/status", fm.serveError(403, "Access forbidden"))
-  fm.setTemplate("403", "Server Error: {%& reason %}")
-  local error403 = routes[routes["/status"]].handler()
-  is(out, "Server Error: Access forbidden", "serveError used as a route handler")
-  is(error403, "", "serveError finds registered template")
-
-  fm.setRoute("/status", fm.serveError(405))
-  handleRequest()
-  is(status, 405, "direct serveError(405) sets expected status")
-
-  fm.setRoute("/status", function() return fm.serveError(402) end)
-  handleRequest()
-  is(status, 402, "handler calling serveError(402) sets expected status")
-
-  section = "(serveResponse)"
-  is(rawget(fm, "serve401"), nil, "serve401 doesn't exist before first use")
-  fm.setRoute("/status", fm.serve401)
-  handleRequest()
-  is(status, 401, "direct serve401 sets expected status")
-  is(rawget(fm, "serve401"), fm.serve401, "serve401 is cached after first use")
-
-  GetParam = function(key) return ({foo=123, bar=456})[key] end
-  HasParam = function() return true end
-  GetHeader = function() end
-  GetMethod = function() return "GET" end
-
-  fm.setRoute({"/statuserr", method = {"SOME", otherwise = 404}}, fm.serve402)
-  handleRequest("/statuserr")
-  is(status, 404, "not matched condition triggers configured otherwise processing")
-
-  fm.setRoute({"/statuserr", method = {"SOME", otherwise = fm.serveResponse(405)}}, fm.serve402)
-  handleRequest("/statuserr")
-  is(status, 405, "not matched condition triggers dynamic otherwise processing")
-
-  fm.setRoute({"/statusoth", method = "GET", otherwise = 404}, fm.serve402)
-  handleRequest("/statusoth")
-  is(status, 402, "`otherwise` value is not checked as filter value")
-
-  GetMethod = function() return "HEAD" end
-  fm.setRoute({"/statusget", method = {"GET", otherwise = 405}}, fm.serve402)
-  handleRequest("/statusget")
-  is(status, 402, "HEAD is accepted when GET is allowed")
-
-  fm.setRoute({"/statusnohead", method = {"GET", HEAD = false, otherwise = 405}}, fm.serve402)
-  handleRequest("/statusnohead")
-  is(status, 405, "HEAD is not accepted when is explicitly disallowed")
-  is(getRequest().headers.Allow, "GET, OPTIONS", "Allow header is returned along with 405 status")
-
-  GetMethod = function() return "PUT" end
-  fm.setRoute({"/statusput", method = "DELETE"}, fm.serve402)
-  fm.setRoute({"/statusput", method = {"GET", "POST", otherwise = 405}}, fm.serve402)
-  handleRequest("/statusput")
-  is(getRequest().headers.Allow, "DELETE, GET, HEAD, POST, OPTIONS",
-    "Allow header includes methods from all matched routes")
-
-  GetMethod = function() return "PUT" end
-  fm.setRoute({"/statusput", method = "DELETE"}) -- disable this route
-  fm.setRoute({"/statusput", method = {"GET", "POST", otherwise = 405}}, fm.serve402)
-  handleRequest("/statusput")
-  is(getRequest().headers.Allow, "GET, HEAD, POST, OPTIONS", "Allow header includes HEAD when 405 status is returned")
-
-  section = "(serveContent)"
-  fm.setTemplate(tmpl1, "Hello, {%& title %}!")
-  fm.setRoute("/content", fm.serveContent(tmpl1, {title = "World"}))
-  routes[routes["/content"]].handler()
-  is(out, "Hello, World!", "serveContent used as a route handler")
-
-  do local status, loc
-    section = "(serveRedirect)"
-    ServeRedirect = function(s, l) status, loc = s, l end
-    fm.setRoute("/content", fm.serveRedirect())
-    routes[routes["/content"]].handler()
-    is(status, 303, "serveRedirect without parameters sets 303 status")
-    is(loc, GetPath(), "serveRedirect without parameters uses current path as location")
-  end
-
-  section = "(params)"
-  url = "/params/789"
-
-  fm.setTemplate(tmpl1, "{%= foo %}-{%= bar %}")
-  fm.setRoute("/params/:bar", function(r)
-      return fm.render(tmpl1, {foo = r.params.foo, bar = r.params.bar})
-    end)
-  handleRequest()
-  is(out, "123-789", "route parameter takes precedence over URL parameter with the same name")
-
-  fm.setTemplate(tmpl1, "-{%= baz %}-")
-  fm.setRoute("/params/:bar", function(r)
-      return fm.render(tmpl1, {baz = tostring(r.params.baz)})
-    end)
-  handleRequest()
-  is(out, "-false-", "empty existing parameter returns `false`")
-
-  HasParam = function() return true end
-  GetParams = function()
-    return {
-      {"a[]", "10"},
-      {"a[]"},
-      {"a[]", "12"},
-      {"a[]", ""},
-    } end
-  fm.setTemplate(tmpl1, "-{%= a[1]..(a[2] or 'false')..a[3]..a[4] %}-")
-  fm.setRoute("/params/:bar", function(r)
-      return fm.render(tmpl1, {a = r.params["a[]"]})
-    end)
-  handleRequest()
-  is(out, "-10false12-", "parameters with [] are returned as array")
-
-  --[[-- validator tests --]]--
-
-  section = "(validator)"
-  local validator = makeValidator{
-    {"name", minlen=5, maxlen=64, },
-    otherwise = function() end,
+fm.setTemplate("cgi", function(cmd)
+  if not cmd or not cmd[1] then error('missing command') end
+  local nph = cmd.nph
+  local maxtime = cmd.maxtime or 5
+  local env = {}
+  local envu = cmd.env or {}
+  local envd = #envu > 0 and envu or {
+    SERVER_ADDR = FormatIp(GetServerAddr()),
+    SERVER_PORT = select(2, GetServerAddr()),
+    SERVER_SOFTWARE = fm.getBrand(),
+    REMOTE_HOST = GetHost(),
+    REMOTE_ADDR = FormatIp(GetRemoteAddr()),
+    REMOTE_INDENT = ParseUrl(GetUrl()).user,
+    REQUEST_SCHEME = GetScheme(),
+    REQUEST_METHOD = GetMethod(),
+    GATEWAY_INTERFACE = "CGI/1.1",
+    SERVER_PROTOCOL = ("HTTP/%01.1f"):format(GetHttpVersion()/10),
+    QUERY_STRING = EncodeUrl({params = ParseUrl(GetUrl()).params}):sub(2),
+    REQUEST_URI = (
+      function(u) return EncodeUrl({params = u.params, path = u.path})end)(
+      ParseUrl(GetUrl())),
+    HTTPS = GetSslIdentity() and "on" or nil,
+    PATH_INFO = GetPath(),
+    PATH_TRANSLATED = GetEffectivePath(),
+    CONTENT_TYPE = GetHeader("Content-Type"),
+    CONTENT_LENGTH = GetHeader("Content-Length"),
   }
-  is(validator{name = "abcdef"}, true, "valid name is allowed")
-  local res, msg = validator{params = {name = "a"}}
-  is(res, nil, "minlen is checked")
-  is(msg, "name is shorter than 5 chars", "minlen message is reported")
-  is(validator{params = {name = ("a"):rep(100)}}, nil, "maxlen is checked")
-  is(type(validator[1]), "function", "makeValidator returns table with a filter handler")
-  is(type(validator.otherwise), "function", "makeValidator return table with an 'otherwise' handler")
-
-  validator = fm.makeValidator{
-    {"name", msg = "Invalid name format", minlen=5, maxlen=64, },
-    {"pass", minlen=5, maxlen=64, },
-    key = true,
-    all = true,
-  }
-  res, msg = validator{params = {name = "a"}}
-  is(type(msg), "table", "error messages reported in a table")
-  is(msg.name, "Invalid name format", "error message is keyed on parameter name")
-  is(msg.pass, "pass is shorter than 5 chars", "multiple error message are provided when `all=true` is set")
-
-  validator = fm.makeValidator{
-    {"name", msg="Invalid name format", minlen=5, maxlen=64, optional=true, },
-    {"pass", msg="Invalid pass format", minlen=5, maxlen=64, optional=true, },
-    key = true,
-  }
-  res = validator{name = "a"}
-  is(res, nil, "validation fails for invalid optional parameters")
-  res = validator{}
-  is(res, true, "validation passes for missing optional parameters")
-  res, err = validator"a"
-  is(res, nil, "validation fails for invalid scalar parameters")
-  is(err.name, "Invalid name format", "scalar parameters get their name from the first rule")
-
-  res = {notcalled = true}
-  fm.setRoute({"/params/:bar",
-      _ = fm.makeValidator({{"bar", minlen = 5}, all = true,
-          otherwise = function(errors) res.errors = errors end}),
-    }, function() res.notcalled = false end)
-  handleRequest()
-  is(res.notcalled, true, "route action not executed after a failed validator check")
-  is(type(res.errors), "table", "failed validator check triggers `otherwise` processing")
-  is(res.errors[1], "bar is shorter than 5 chars", "`otherwise` processing gets the list of errors")
-
-  --[[-- security tests --]]--
-
-  section = "(security)"
-  res = makeBasicAuth({user = "pass"})
-  is(type(res[1]), "function", "makeBasicAuth returns table with a filter handler")
-  is(type(res.otherwise), "function", "makeBasicAuth returns table with an 'otherwise' handler")
-
-  local matcherTests = {
-    {"0.0.0.0/0", "1.2.3.4", true},
-    {"192.168.2.1", "192.168.2.1", true},
-    {{"!192.168.2.1", "192.168.2.0/30"}, "192.168.2.1", false},
-    {{"!192.168.2.1", "192.168.2.0/30"}, "192.168.3.1", false},
-    {{"!192.168.2.1", "192.168.2.0/30"}, "192.168.2.2", true},
-    {"192.168.2.0/32", "192.168.2.a", false},
-    {"192.168.2.0/32", "192.168.2.1", false},
-    {"192.168.2.0/24", "192.168.2.5", true},
-    {"192.168.2.4/24", "192.168.2.5", true},
-    {"10.10.20.0/30", "10.10.20.3", true},
-    {"10.10.20.0/30", "10.10.20.5", false},
-    {"10.10.20.4/30", "10.10.20.5", true},
-  }
-  for n, test in ipairs(matcherTests) do
-    local mask, ip, res = unpack(test)
-    is(makeIpMatcher(mask)(ParseIp(ip)), res,
-      ("makeIpMatcher %s (%d/%d)"):format(ip, n, #matcherTests))
+  if #envu == 0 then
+    -- provide all the headers
+    for k, v in pairs(GetHeaders()) do envd["HTTP_"..k:upper()] = v end
+    -- overwrite all defaults
+    for k, v in pairs(envu) do envd[k] = v end
+    -- convert to strings unless the value is false
+    for k, v in pairs(envd) do if v then table.insert(env, k.."="..v) end end
   end
+  local rfd1, wfd1 = unix.pipe(unix.O_CLOEXEC)
+  local rfd2, wfd2 = unix.pipe(unix.O_CLOEXEC)
+  local pid = unix.fork()
+  if pid == 0 then  -- forked child
+    assert(unix.close(GetClientFd()))  -- close client fd to not send anything
+    assert(unix.dup(rfd2, 0))  -- redirect stdin
+    assert(unix.dup(wfd1, 1))  -- redirect stdout
+    assert(unix.dup(wfd1, 2))  -- redirect stderr
+    assert(unix.close(wfd1))
+    assert(unix.close(rfd1))
+    assert(unix.close(wfd2))
+    assert(unix.close(rfd2))
+    assert(unix.sigaction(unix.SIGQUIT, unix.exit))
+    unix.execve(cmd[1], cmd, env)
+    unix.exit(127)
+  else
+    unix.write(wfd2, GetBody())
+    local isactive = true
+    local header = true
+    local done = false
+    assert(unix.sigaction(unix.SIGALRM, function() isactive = false end))
+    assert(unix.setitimer(unix.ITIMER_REAL, 0, 0, maxtime, 0))
+    local cfd = GetClientFd()
+    while true do
+      -- block for a bit until there is output from the launched process
+      local se = (unix.poll({[rfd1] = unix.POLLIN}, maxtime*1000/10) or {})[rfd1] or 0
+      if se & (unix.POLLHUP + unix.POLLERR) > 0 then break end
 
-  local privateMatcher = makeIpMatcher(
-    {"192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"})
-  for val, res in pairs(
-    {["192.168.0.1"] = true, ["172.16.0.1"] = true,
-      ["10.0.0.1"] = true, ["100.1.1.1"] = false}) do
-    local ip = ParseIp(val)
-    is(privateMatcher(ip), res,
-      ("makeIpMatcher for private ip %s"):format(val))
+      -- check if the client is (still) writable
+      local re = (unix.poll({[cfd] = unix.POLLOUT}) or {})[cfd] or 0
+      if re & (unix.POLLHUP + unix.POLLERR) > 0 then break end
+
+      -- check if the process took too long to respond
+      if not isactive then break end
+
+      local data, errno
+      if se & unix.POLLIN > 0 then data, errno = unix.read(rfd1) end
+      -- check for end of file or any descriptor errors
+      if data == "" or errno and errno:errno() == unix.EBADF then break end
+
+      if data then
+        if header then
+          local pos = 1
+          while true do
+            -- allow both CRLF and LF to be handled
+            local spos, epos = data:find("\r?\n", pos, false)
+            if not spos then break end
+            -- found an empty string, which signals the end of headers
+            if spos == pos then header = false; pos = epos + 1; break end
+            local status, reason
+            if pos == 1 then
+              status, reason = data:sub(pos, spos-1):match("^HTTP/%d%.%d%s+(%d%d%d)%s+(.+)")
+            end
+            if status then
+              -- found the status line
+              SetStatus(status, reason)
+            else
+              -- found something that may be a header
+              local name, value = data:sub(pos, spos-1):match("^(%a[%w_-]+):%s*(.+)")
+              -- check if the header has a valid syntax
+              -- if not, skip it and handle it as part of the data;
+              -- this may happen if an error is thrown instead of a valid context
+              local ok, err = pcall(SetHeader, name, value)
+              if not name or not value or not ok then
+                header = false
+                break
+              end
+            end
+            pos = epos + 1
+          end
+          -- finished parsing headers, so remove them from the data
+          if not header then
+            -- if nph is requested, then close the connection when done
+            if nph then SetHeader("Connection", "close") end
+            if pos > 1 then data = data:sub(pos) end
+          end
+        end
+        -- if the headers are set, write the response
+        if not header then
+          Write(data)
+          if nph then coroutine.yield() end
+        end
+      -- check if reading was interrupted or wasn't done
+      elseif not data and (not errno or errno:errno() == unix.EINTR) then
+        -- closing connection will fail on send
+        -- if it doesn't fail, then redo the interrupted read
+      else  -- report an error and stop
+        -- TODO: log error
+        break
+      end
+      -- stop reading if the process is already done
+      done = not unix.wait(pid, unix.WNOHANG)
+      if done then break end
+    end
+    unix.close(rfd1)
+    unix.close(wfd1)
+    unix.close(rfd2)
+    unix.close(wfd2)
+    -- kill launched process if it's still running, as it's been running for too long
+    if not done then assert(unix.kill(pid, unix.SIGTERM)) end
   end
+end)
 
-  --[[-- redbean tests --]]--
-
-  if isRedbean then
-    section = "(log)"
-    is(type(fm.logVerbose), "function", "logVerbose is a (dynamic) method")
-    is(type(fm.logInfo), "function", "logInfo is a (dynamic) method")
-    is(type(fm.kLogVerbose), "number", "kLogVerbose is a valid number")
-
-    section = "(redbean)"
-    is(type(fm.fetch), "function", "fetch function is available")
-    is(type(fm.isLoopbackIp), "function", "isLoopbackIp function is available")
-    is(type(fm.formatIp), "function", "formatIp function is available")
-    is(type(fm.formatHttpDateTime), "function", "formatHttpDateTime function is available")
-  end
-
-  --[[-- DB management tests --]]--
-
-  if isRedbean then
-    section = "(makeStorage)"
-    local script = [[
-      create table test(key integer primary key, value text)
-    ]]
-    local dbm = fm.makeStorage(":memory:", script)
-    local changes = dbm:upgrade()
-    is(#changes, 0, "no changes from initial upgrade")
-    changes = dbm:exec("insert into test values(1, 'abc')")
-    is(changes, 1, "insert is successful")
-    local row = dbm:fetchone("select key, value from test where key = 1")
-    is(row.key, 1, "select fetches expected value 1/2")
-    is(row.value, "abc", "select fetches expected value 2/2")
-  end
-
-  --[[-- run tests --]]--
-
-  section = "(run)"
-  local addr, brand, port, header, value = ""
-  GetRedbeanVersion = function() return 0x020103 end
-  ProgramBrand = function(b) brand = b end
-  ProgramPort = function(p) port = p end
-  ProgramAddr = function(a) addr = addr.."-"..a end
-  ProgramHeader = function(h,v) header, value = h, v end
-  fm.sessionOptions.secret = false -- disable secret message warning
-  run{port = 8081, addr = {"abc", "def"}, headers = {RetryAfter = "bar"}}
-  is(brand:match("redbean/[.%d]+"), "redbean/2.1.3", "brand captured server version")
-  is(port, 8081, "port is set when passed")
-  is(addr, "-abc-def", "multiple values are set from a table")
-  is(header..":"..value, "Retry-After:bar", "default headers set when passed")
-
-  ok, err = pcall(run, {cookieOptions = {}}) -- reset cookie options
-  is(ok, true, "run accepts valid options")
-
-  ok, err = pcall(run, {invalidOptions = {}}) -- some invalid option
-  is(ok, false, "run fails on invalid options")
-  is(err:match("unknown option"), "unknown option", "run reports unknown option")
-
-  done()
-end
-
--- run tests if launched as a script
-if not pcall(debug.getlocal, 4, 1) then run{tests = true} end
-
--- return library if called with `require`
 return fm

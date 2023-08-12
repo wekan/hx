@@ -29,5 +29,3 @@ alias yd="noglob /opt/homebrew/bin/yt-dlp -f 'bv+ba/b' --sub-langs all,-live_cha
 #export PATH="/opt/homebrew/opt/node@14/bin:$PATH"
 #export LDFLAGS="-L/opt/homebrew/opt/node@14/lib"
 #export CPPFLAGS="-I/opt/homebrew/opt/node@14/include"
-#export PATH="/opt/homebrew/opt/php@8.2/bin:$PATH"
-#export PATH="/opt/homebrew/opt/php@8.2/sbin:$PATH"

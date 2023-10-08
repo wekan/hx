@@ -70,9 +70,9 @@ do
                 sudo apt-get -y update
                 sudo apt-get -y install php8.2 php8.2-cli php8.2-mbstring php8.2-zip php8.2-curl
 		#Ubuntu and Mint:
-		sudo apt-get install -y openjdk-18-jdk
+		#sudo apt-get install -y openjdk-18-jdk
 		#Debian:
-		sudo apt-get install -y openjdk-18-jdk-headless
+		sudo apt-get install -y openjdk-17-jdk-headless
                 #
                 sudo luarocks install lrexlib-pcre
                 sudo luarocks install environ

@@ -36,13 +36,12 @@ begin
 end;
 
 begin
-  Application.Port:=8080;
+  Application.Port:=5000;
   HTTPRouter.RegisterRoute('/', rmGet, @loginEndpoint);
   HTTPRouter.RegisterRoute('/json', rmGet, @jsonEndpoint);
   HTTPRouter.RegisterRoute('/catchall', rmAll, @catchallEndpoint, true);
   Application.Threaded:=false;
   Application.Initialize;
-  Writeln('Server is ready at localhost:' + IntToStr(Application.port));
+  Writeln('Server is ready at localhost:' + IntToStr(Application.Port));
   Application.Run;
 end.
-

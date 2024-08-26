@@ -57,7 +57,7 @@ do
             if [[ "$OSTYPE" == "linux-gnu" ]]; then
                 echo "Linux";
                 # Debian, Ubuntu, Mint
-                sudo apt-get install -y build-essential gcc g++ make git curl wget cmake
+                sudo apt-get install -y build-essential gcc g++ make git curl wget cmake tree ncdu
                 sudo apt-get install -y p7zip-full zip unzip unp
                 sudo apt-get install -y mono-complete
                 # PHP 8.1

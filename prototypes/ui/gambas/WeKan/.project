@@ -1,7 +1,6 @@
 # Gambas Project File 3.0
 Title=WeKan
 Startup=WebformLogin
-UseHttpServer=1
 Icon=.public/Images/logo.svg
 Version=1.0.0
 Component=gb.crypt
@@ -29,3 +28,4 @@ Categories=ubuntu:"ProjectManagement"
 Groups=ubuntu:"web"
 Tags=Internet,WebDevelopment,Web,SQLite,Example
 GambasVersion=3.15
+UseHttpServer=1

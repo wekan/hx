@@ -154,7 +154,7 @@ do
                 #macOS provides OpenAL.framework, so no need to install openal
                 #Changed dotnet-sdk => mono, because dotnet did not work
                 #Changed openjdk@11 => openjdk@17
-                brew install haxe wget p7zip zip unzip unp screen mono openjdk@17 luarocks php@8.2 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
+                brew install haxe wget p7zip zip unzip unp screen mono openjdk@17 luarocks php@8.3 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
                 # Install Java
                 # Old: sudo ln -sfn /opt/homebres/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 # https://stackoverflow.com/questions/69875335/macos-how-to-install-java-17

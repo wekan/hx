@@ -66,9 +66,9 @@ do
                 #sudo apt-get install -y lua5.3 liblua5.3-dev luarocks
                 sudo apt-get install -y lua5.4 liblua5.4-dev luarocks
                 #sudo apt-get install -y php8.0-cli php8.0-mbstring
-                #sudo add-apt-repository -y ppa:ondrej/php  # php8.3 is already in Ubuntu 22.04
+                #sudo add-apt-repository -y ppa:ondrej/php  # php8.4 is already in Ubuntu 22.04
                 sudo apt-get -y update
-                sudo apt-get -y install php8.3 php8.3-cli php8.3-mbstring php8.3-zip php8.3-curl
+                sudo apt-get -y install php8.4 php8.4-cli php8.4-mbstring php8.4-zip php8.4-curl
 		#Ubuntu and Mint:
 		#sudo apt-get install -y openjdk-18-jdk
 		#Debian:
@@ -154,7 +154,7 @@ do
                 #macOS provides OpenAL.framework, so no need to install openal
                 #Changed dotnet-sdk => mono, because dotnet did not work
                 #Changed openjdk@11 => openjdk@17
-                brew install haxe wget p7zip zip unzip unp screen mono openjdk@17 luarocks php@8.3 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
+                brew install haxe hashlink wget p7zip zip unzip unp screen mono openjdk@17 luarocks php@8.4 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
                 # Install Java
                 # Old: sudo ln -sfn /opt/homebres/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 # https://stackoverflow.com/questions/69875335/macos-how-to-install-java-17
@@ -164,7 +164,7 @@ do
                 luarocks install luasocket
                 luarocks install luv
                 luarocks install luautf8
-                brew install --build-from-source hashlink
+                #brew install --build-from-source hashlink
                 exit;
             elif [[ "$OSTYPE" == "cygwin" ]]; then
                 # POSIX compatibility layer and Linux environment emulation for Windows
@@ -303,7 +303,7 @@ do
             echo "Build All."
             rm -rf .build
             echo "Creating directory .build:"
-            mkdir -p .build/node .build/php .build/python .build/cs .build/java .build/jvm .build/cpp .build/lua .build/hl .build/hlc
+            mkdir -p .build/node .build/php .build/python .build/cs/bin  .build/java .build/jvm .build/cpp .build/lua .build/hl .build/hlc
             echo "Building cpp:"
             (haxelibpath=$(cat ~/.haxelib) && cd $haxelibpath/hxcpp/git/tools/hxcpp && haxe compile.hxml)
             haxe --cpp .build/cpp --main Wekan

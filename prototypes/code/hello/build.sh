@@ -141,12 +141,12 @@ do
                 #sudo chown -R $(id -u):$(id -g) $HOME/.npm $HOME/.meteor
 
             elif [[ "$OSTYPE" == "linux-musl" ]]; then
-                yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua-luv-dev luarocks5.4 php84 php84-mbstring curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk17-jdk
+                yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua5.4-luautf8 lua-luv-dev luarocks5.4 php84 php84-mbstring curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk17-jdk
                 luarocks-5.4 install lrexlib-pcre PCRE_DIR=/usr/local
                 luarocks-5.4 install environ
                 luarocks-5.4 install luasocket
                 luarocks-5.4 install luv
-                luarocks-5.4 install lua-utf8
+                luarocks-5.4 install luautf8
             elif [[ "$OSTYPE" == "darwin"* ]]; then
                 echo "macOS";
                 # Needs XCode installed.
@@ -449,7 +449,11 @@ do
             echo "Run JVM jar"
             java -jar .build/jvm/Wekan.jar
             echo "Run Lua"
-            lua .build/lua/wekan.lua
+            if [[ "$OSTYPE" == "linux-musl" ]]; then
+              lua5.4 .build/lua/wekan.lua
+            else
+              lua .build/lua/wekan.lua
+            fi
             echo "Run Node.js"
             node .build/node/wekan.js
             echo "Run PHP"
@@ -507,7 +511,11 @@ do
 
         "Run Lua")
             echo "Run Lua"
-            lua .build/lua/wekan.lua
+            if [[ "$OSTYPE" == "linux-musl" ]]; then
+              lua5.4 .build/lua/wekan.lua
+            else
+              lua .build/lua/wekan.lua
+            fi
             echo Done.
             break
             ;;

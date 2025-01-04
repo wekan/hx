@@ -141,8 +141,12 @@ do
                 #sudo chown -R $(id -u):$(id -g) $HOME/.npm $HOME/.meteor
 
             elif [[ "$OSTYPE" == "linux-musl" ]]; then
-                apk add mlocate haxe git zip unzip p7zip nano alpine-sdk mono luarocks php84 curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk17-jdk
-                luarocks install lrexlib-pcre environ luasocket luv luautf8
+                yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua-luv-dev luarocks5.4 php84 curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk17-jdk
+                luarocks-5.4 install lrexlib-pcre PCRE_DIR=/usr/local
+                luarocks-5.4 install environ
+                luarocks-5.4 install luasocket
+                luarocks-5.4 install luv
+                luarocks-5.4 install luautf8
             elif [[ "$OSTYPE" == "darwin"* ]]; then
                 echo "macOS";
                 # Needs XCode installed.

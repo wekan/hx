@@ -432,6 +432,9 @@ do
             if [[ "$OSTYPE" == "linux-gnu" ]]; then
                 echo "Linux";
                 mono .build/cs/bin/Wekan.exe
+            elif [[ "$OSTYPE" == "linux-musl" ]]; then
+                echo "Linux Musl postmarketOS";
+                mono .build/cs/bin/Wekan.exe
             elif [[ "$OSTYPE" == "darwin"* ]]; then
                 echo "macOS";
                 #dotnet .build/cs/bin/Wekan.exe

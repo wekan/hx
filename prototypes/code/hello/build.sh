@@ -131,15 +131,18 @@ do
                 #source .bashrc
 
                 # Change back to Wekan directory
-                cd ~/repos/w/hx/prototypes/code/hello
+                cd ~/repos/w/hx/prototypes/code/helloo
 
                 # Show new paths
-                echo "_____________________________________"
+                echo "________________________________o_____"
                 echo "Please add these to your ~/.bashrc :"
                 echo ""
                 cat ~/repos/w/hx/prototypes/code/hello/devpath.txt
                 #sudo chown -R $(id -u):$(id -g) $HOME/.npm $HOME/.meteor
 
+            elif [[ "$OSTYPE" == "linux-musl" ]]; then
+                apk add haxe git zip unzip p7zip nano alpine-sdk mono luarocks php84 curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk17-jdk
+                luarocks install lrexlib-pcre environ luasocket luv luautf8
             elif [[ "$OSTYPE" == "darwin"* ]]; then
                 echo "macOS";
                 # Needs XCode installed.

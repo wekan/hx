@@ -1,2 +1,2 @@
-export PATH=/usr/local/bin:~/.local/bin:~/repos/haxebin/haxe:~/repos/haxebin/neko:~/.meteor:~/projects/meteor-spk/meteor-spk-0.6.0:$PATH
+export PATH=$HOME/.meteor:$HOME/.local/bin:/usr/local/bin:$HOME/repos/haxebin/haxe:$HOME/repos/haxebin/neko:$HOME/.meteor:$HOME/projects/meteor-spk/meteor-spk-0.6.0:$PATH
 export LD_LIBRARY_PATH=~/repos/haxebin/neko:/usr/local/lib:$LD_LIBRARY_PATH

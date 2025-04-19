@@ -65,9 +65,9 @@ do
                 # Ubuntu:
                 sudo apt-get install -y lua5.4 liblua5.4-dev luarocks
                 #sudo apt-get install -y php8.0-cli php8.0-mbstring
-                #sudo add-apt-repository -y ppa:ondrej/php  # php8.3 is already in Ubuntu 22.04
+                #sudo add-apt-repository -y ppa:ondrej/php  # php8.4 is already in Ubuntu 22.04
                 sudo apt-get -y update
-                sudo apt-get -y install php8.3 php8.3-cli php8.3-mbstring php8.3-zip php8.3-curl
+                sudo apt-get -y install php8.4 php8.4-cli php8.4-mbstring php8.4-zip php8.4-curl
 		#Ubuntu and Mint:
 		#sudo apt-get install -y openjdk-18-jdk
 		#Debian:

@@ -71,7 +71,8 @@ do
 		#Ubuntu and Mint:
 		#sudo apt-get install -y openjdk-18-jdk
 		#Debian:
-		sudo apt-get install -y openjdk-17-jdk-headless
+		#sudo apt-get install -y openjdk-17-jdk-headless
+		sudo apt-get install -y openjdk-25-jdk-headless
                 #
                 sudo luarocks install lrexlib-pcre
                 sudo luarocks install environ
@@ -140,7 +141,7 @@ do
                 #sudo chown -R $(id -u):$(id -g) $HOME/.npm $HOME/.meteor
 
             elif [[ "$OSTYPE" == "linux-musl" ]]; then
-                yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua5.4-luautf8 lua-luv-dev luarocks5.4 php84 php84-mbstring curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk17-jdk
+                yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua5.4-luautf8 lua-luv-dev luarocks5.4 php84 php84-mbstring curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk25-jdk
                 luarocks-5.4 install lrexlib-pcre PCRE_DIR=/usr/local
                 luarocks-5.4 install environ
                 luarocks-5.4 install luasocket
@@ -160,11 +161,11 @@ do
                 #macOS provides OpenAL.framework, so no need to install openal
                 #Changed dotnet-sdk => mono, because dotnet did not work
                 #Changed openjdk@11 => openjdk@17
-                brew install haxe hashlink wget p7zip zip unzip unp screen mono openjdk@17 luarocks php@8.4 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
+                brew install haxe hashlink wget p7zip zip unzip unp screen mono openjdk@25 luarocks php@8.4 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
                 # Install Java
                 # Old: sudo ln -sfn /opt/homebres/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 # https://stackoverflow.com/questions/69875335/macos-how-to-install-java-17
-                sudo ln -sfn /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
+                sudo ln -sfn /opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 luarocks install lrexlib-pcre
                 luarocks install environ
                 luarocks install luasocket

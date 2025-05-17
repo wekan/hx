@@ -131,7 +131,7 @@ do
                 #source .bashrc
 
                 # Change back to Wekan directory
-                cd ~/repos/w/hx/prototypes/code/helloo
+                cd ~/repos/w/hx/prototypes/code/hello
 
                 # Show new paths
                 echo "________________________________o_____"

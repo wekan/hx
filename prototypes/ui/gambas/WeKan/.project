@@ -8,6 +8,7 @@ Component=gb.db
 Component=gb.db.sqlite3
 Component=gb.debug
 Component=gb.util
+Component=gb.geom
 Component=gb.signal
 Component=gb.util.web
 Component=gb.web

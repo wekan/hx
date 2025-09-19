@@ -236,7 +236,6 @@ do
             haxelib git hxWidgets https://github.com/haxeui/hxwidgets --skip-dependencies
             haxelib git mime https://github.com/benmerckx/mime --skip-dependencies
             haxelib git mongodb http://github.com/MattTuttle/mongo-haxe-driver --skip-dependencies
-            haxelib git mongomod https://bitbucket.org/yar3333/haxe-mongomod --skip-dependencies
             haxelib git mongomod https://github.com/yar3333/haxe-mongomod --skip-dependencies
             # Cound not get git version of refactor working yet.
             haxelib git refactor https://github.com/yar3333/haxe-refactor --skip-dependencies

@@ -60,8 +60,8 @@ do
                 sudo apt-get install -y build-essential gcc g++ make git curl wget cmake tree ncdu
                 sudo apt-get install -y p7zip-full zip unzip unp
                 sudo apt-get install -y mono-complete
-                # PHP 8.1
-                sudo apt-get install -y lsb-release ca-certificates apt-transport-https software-properties-common gnupg2
+                # PHP 8.4
+                sudo apt-get install -y lsb-release ca-certificates apt-transport-https gnupg2
                 # Ubuntu:
                 sudo apt-get install -y lua5.4 liblua5.4-dev luarocks
                 #sudo apt-get install -y php8.0-cli php8.0-mbstring

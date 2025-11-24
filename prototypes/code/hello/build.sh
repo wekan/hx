@@ -247,6 +247,9 @@ do
             # - SQL: Haxe 5 fixes
             #   haxelib git tink_sql https://github.com/haxetink/tink_sql --skip-dependencies
             haxelib git tink_sql https://github.com/haxetink2/tink_sql --skip-dependencies
+            # - STREAMS: Haxe 5 fixes
+            #   haxelib git tink_streams https://github.com/haxetink/tink_streams --skip-dependencies
+            haxelib git tink_streams https://github.com/haxetink2/tink_streams --skip-dependencies
             #-------------------------------
             # REMAINING ORIGINAL TINK LIBRARIES
             ## A
@@ -305,7 +308,6 @@ do
             haxelib git tink_spec https://github.com/haxetink/tink_spec --skip-dependencies
             haxelib git tink_springs https://github.com/haxetink/tink_springs --skip-dependencies
             haxelib git tink_state https://github.com/haxetink/tink_state --skip-dependencies
-            haxelib git tink_streams https://github.com/haxetink/tink_streams --skip-dependencies
             haxelib git tink_stringly https://github.com/haxetink/tink_stringly --skip-dependencies
             haxelib git tink_syntaxhub https://github.com/haxetink/tink_syntaxhub --skip-dependencies
             haxelib git tink_svgspec https://github.com/haxetink/tink_svgspec --skip-dependencies

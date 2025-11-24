@@ -189,154 +189,166 @@ do
             ;;
 
         "Haxelib Install All Packages")
-            echo "Haxelib Install All Packages."
-            # Reflaxe
-            haxelib git reflaxe https://github.com/SomeRanDev/reflaxe --skip-dependencies
-            # benmerckx
-            haxelib git asys https://github.com/benmerckx/asys --skip-dependencies
-            haxelib git mime https://github.com/benmerckx/mime --skip-dependencies
-            # SmilyOrg
-            haxelib git ansi https://github.com/SmilyOrg/ansi --skip-dependencies
-            # HaxeFoundation: Programming language targets etc
-            haxelib git format https://github.com/HaxeFoundation/format --skip-dependencies
-            haxelib git hscript https://github.com/HaxeFoundation/hscript --skip-dependencies
-            haxelib git hxcpp https://github.com/HaxeFoundation/hxcpp --skip-dependencies
-            haxelib git hxcs https://github.com/HaxeFoundation/hxcs --skip-dependencies
-            haxelib git hxcpp https://github.com/HaxeFoundation/hxcpp --skip-dependencies
-            haxelib git hxjava https://github.com/HaxeFoundation/hxjava --skip-dependencies
-            haxelib git hxnodejs https://github.com/HaxeFoundation/hxnodejs --skip-dependencies
-            # HaxeUI
-            haxelib git haxeui-core https://github.com/haxeui/haxeui-core --skip-dependencies
-            haxelib git haxeui-openfl https://github.com/haxeui/haxeui-openfl --skip-dependencies
-            haxelib git haxeui-flixel https://github.com/haxeui/haxeui-flixel --skip-dependencies
-            haxelib git haxeui-kha https://github.com/haxeui/haxeui-kha --skip-dependencies
-            haxelib git haxeui-hxwidgets https://github.com/haxeui/haxeui-hxwidgets --skip-dependencies
-            haxelib git hxWidgets https://github.com/haxeui/hxWidgets --skip-dependencies
-            haxelib git haxeui-html5 https://github.com/haxeui/haxeui-html5 --skip-dependencies
-            haxelib git haxeui-heaps https://github.com/haxeui/haxeui-heaps --skip-dependencies
-            haxelib git haxeui-android https://github.com/haxeui/haxeui-android --skip-dependencies
-            haxelib git haxeui-raylib https://github.com/haxeui/haxeui-raylib --skip-dependencies
-            haxelib git haxeui-nme https://github.com/haxeui/haxeui-nme --skip-dependencies
-            haxelib git haxeui-pdcurses https://github.com/haxeui/haxeui-pdcurses --skip-dependencies
-            haxelib git haxeui-winforms https://github.com/haxeui/haxeui-winforms --skip-dependencies
-            haxelib git haxeui-pixijs https://github.com/haxeui/haxeui-pixijs --skip-dependencies
-            haxelib git haxeui-code-editor https://github.com/haxeui/haxeui-code-editor --skip-dependencies
-            # back2dos
-            haxelib git html-entities https://github.com/back2dos/html-entities --skip-dependencies
-            # MongoDB
-            haxelib git mongodb http://github.com/MattTuttle/mongo-haxe-driver --skip-dependencies
-            haxelib git mongomod https://github.com/yar3333/haxe-mongomod --skip-dependencies
-            # Cound not get git version of refactor working yet.
-            haxelib git refactor https://github.com/yar3333/haxe-refactor --skip-dependencies
-            #haxelib install refactor --skip-dependencies
-            # HaxeLink/C compiler
-            #haxelib install hlc-compiler
-            #-------------------------------
-            # FORKS OF TINK LIBRARIES
-            # - ~/haxelib$ ../repos/admin-scripts/git-subsub-notcommitted.sh
-            # - https://github.com/xet7/admin-scripts/blob/master/git-subsub-notcommitted.sh
-            # - TINK_HTTP: Haxe 5 fixes and HTTP header code
-            #   haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
-            haxelib git tink_http https://github.com/haxetink2/tink_http --skip-dependencies
-            # - HTTP-STATUS: kevinresol
-            #   haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
-            haxelib git http-status https://github.com/haxetink2/http-status --skip-dependencies
-            # - TINK_IO: Haxe 5 fixes
-            #   haxelib git tink_io https://github.com/haxetink/tink_io --skip-dependencies
-            haxelib git tink_io https://github.com/haxetink2/tink_io --skip-dependencies
-            # - TINK_SQL: Haxe 5 fixes
-            #   haxelib git tink_sql https://github.com/haxetink/tink_sql --skip-dependencies
-            haxelib git tink_sql https://github.com/haxetink2/tink_sql --skip-dependencies
-            # - TINK_STREAMS: Haxe 5 fixes
-            #   haxelib git tink_streams https://github.com/haxetink/tink_streams --skip-dependencies
-            haxelib git tink_streams https://github.com/haxetink2/tink_streams --skip-dependencies
-            # - TINK_TCP: Haxe 5 fixes
-            #   haxelib git tink_tcp https://github.com/haxetink/tink_tcp --skip-dependencies
-            haxelib git tink_tcp https://github.com/haxetink2/tink_tcp --skip-dependencies
-            # - TINK_VALIDATION: Haxe 5 fixes
-            #   haxelib git tink_validation https://github.com/haxetink/tink_validation --skip-dependencies
-            haxelib git tink_validation https://github.com/haxetink2/tink_validation --skip-dependencies
-            # - TINK_WEB: Haxe 5 fixes
-            #   haxelib git tink_web https://github.com/haxetink/tink_web --skip-dependencies
-            haxelib git tink_web https://github.com/haxetink2/tink_web --skip-dependencies
-            # - TINK_WEBSOCKET: Haxe 5 fixes
-            #   haxelib git tink_websocket https://github.com/haxetink/tink_websocket --skip-dependencies
-            haxelib git tink_websocket https://github.com/haxetink2/tink_websocket --skip-dependencies
-            #-------------------------------
-            # REMAINING ORIGINAL TINK LIBRARIES
-            ## A
-            haxelib git tink_adhoc https://github.com/haxetink/tink_adhoc --skip-dependencies
-            haxelib git tink_anon https://github.com/haxetink/tink_anon --skip-dependencies
-            haxelib git tink_await https://github.com/haxetink/tink_await --skip-dependencies
-            ## C
-            haxelib git tink_core https://github.com/haxetink/tink_core --skip-dependencies
-            haxelib git tink_chunk https://github.com/haxetink/tink_chunk --skip-dependencies
-            haxelib git tink_color https://github.com/haxetink/tink_color --skip-dependencies
-            haxelib git tink_cli https://github.com/haxetink/tink_cli --skip-dependencies
-            haxelib git tink_clone https://github.com/haxetink/tink_clone --skip-dependencies
-            haxelib git tink_concurrent https://github.com/haxetink/tink_concurrent --skip-dependencies
-            haxelib git tink_csss https://github.com/haxetink/tink_csss --skip-dependencies
-            haxelib git tink_cssclass https://github.com/haxetink/tink_cssclass --skip-dependencies
-            ## D
-            haxelib git tink_domspec https://github.com/haxetink/tink_domspec --skip-dependencies
-            ## F
-            haxelib git tink_fs https://github.com/haxetink/tink_fs --skip-dependencies
-            ## G
-            haxelib git tink_geom2 https://github.com/haxetink/tink_geom2 --skip-dependencies
-            ## H
-            haxelib git tink_html https://github.com/haxetink/tink_html --skip-dependencies
-            haxelib git tink_htmlstring https://github.com/haxetink/tink_htmlstring --skip-dependencies
-            # H continued
-            haxelib git tink_http_middleware https://github.com/haxetink/tink_http_middleware --skip-dependencies
-            haxelib git tink_hxx https://github.com/haxetink/tink_hxx --skip-dependencies
-            ## I
-            haxelib git tink_ip https://github.com/haxetink/tink_ip --skip-dependencies
-            ## J
-            haxelib git tink_json https://github.com/haxetink/tink_json --skip-dependencies
-            ## L
-            haxelib git tink_lang https://github.com/haxetink/tink_lang --skip-dependencies
-            ## M
-            haxelib git tink_macro https://github.com/haxetink/tink_macro --skip-dependencies
-            haxelib git tink_multipart https://github.com/haxetink/tink_multipart --skip-dependencies
-            ## N
-            haxelib git tink_null https://github.com/haxetink/tink_null --skip-dependencies
-            ## O
-            haxelib git tink_onbuild https://github.com/haxetink/tink_onbuild --skip-dependencies
-            ## P
-            haxelib git tink_parse https://github.com/haxetink/tink_parse --skip-dependencies
-            haxelib git tink_path https://github.com/haxetink/tink_path --skip-dependencies
-            haxelib git tink_priority https://github.com/haxetink/tink_priority --skip-dependencies
-            haxelib git tink_protocol https://github.com/haxetink/tink_protocol --skip-dependencies
-            haxelib git tink_pure https://github.com/haxetink/tink_pure --skip-dependencies
-            ## Q
-            haxelib git tink_querystring https://github.com/haxetink/tink_querystring --skip-dependencies
-            ## R
-            haxelib git tink_runloop https://github.com/haxetink/tink_runloop --skip-dependencies
-            ## S
-            haxelib git tink_semver https://github.com/haxetink/tink_semver --skip-dependencies
-            haxelib git tink_serialize https://github.com/haxetink/tink_serialize --skip-dependencies
-            haxelib git tink_slice https://github.com/haxetink/tink_slice --skip-dependencies
-            haxelib git tink_spatial https://github.com/haxetink/tink_spatial --skip-dependencies
-            haxelib git tink_spec https://github.com/haxetink/tink_spec --skip-dependencies
-            haxelib git tink_springs https://github.com/haxetink/tink_springs --skip-dependencies
-            haxelib git tink_state https://github.com/haxetink/tink_state --skip-dependencies
-            haxelib git tink_stringly https://github.com/haxetink/tink_stringly --skip-dependencies
-            haxelib git tink_syntaxhub https://github.com/haxetink/tink_syntaxhub --skip-dependencies
-            haxelib git tink_svgspec https://github.com/haxetink/tink_svgspec --skip-dependencies
-            ## T
-            haxelib git tink_template https://github.com/haxetink/tink_template --skip-dependencies
-            haxelib git tink_testadapter https://github.com/haxetink/tink_testadapter --skip-dependencies
-            haxelib git tink_testrunner https://github.com/haxetink/tink_testrunner --skip-dependencies
-            haxelib git tink_typecrawler https://github.com/haxetink/tink_typecrawler --skip-dependencies
-            ## U
-            haxelib git tink_unittest https://github.com/haxetink/tink_unittest --skip-dependencies
-            haxelib git tink_url https://github.com/haxetink/tink_url --skip-dependencies
-            haxelib git tink_uv https://github.com/haxetink/tink_uv --skip-dependencies
-            ## X
-            haxelib git tink_xml https://github.com/haxetink/tink_xml --skip-dependencies
-            echo Done.
-            break
-            ;;
+		echo "Haxelib Install All Packages."
+		# Reflaxe
+		haxelib git reflaxe https://github.com/SomeRanDev/reflaxe --skip-dependencies
+		# benmerckx
+		haxelib git asys https://github.com/benmerckx/asys --skip-dependencies
+		haxelib git mime https://github.com/benmerckx/mime --skip-dependencies
+		# SmilyOrg
+		haxelib git ansi https://github.com/SmilyOrg/ansi --skip-dependencies
+		# HaxeFoundation: Programming language targets etc
+		haxelib git format https://github.com/HaxeFoundation/format --skip-dependencies
+		haxelib git hscript https://github.com/HaxeFoundation/hscript --skip-dependencies
+		haxelib git hxcpp https://github.com/HaxeFoundation/hxcpp --skip-dependencies
+		haxelib git hxcs https://github.com/HaxeFoundation/hxcs --skip-dependencies
+		haxelib git hxcpp https://github.com/HaxeFoundation/hxcpp --skip-dependencies
+		haxelib git hxjava https://github.com/HaxeFoundation/hxjava --skip-dependencies
+		haxelib git hxnodejs https://github.com/HaxeFoundation/hxnodejs --skip-dependencies
+		# HaxeUI
+		haxelib git haxeui-core https://github.com/haxeui/haxeui-core --skip-dependencies
+		haxelib git haxeui-openfl https://github.com/haxeui/haxeui-openfl --skip-dependencies
+		haxelib git haxeui-flixel https://github.com/haxeui/haxeui-flixel --skip-dependencies
+		haxelib git haxeui-kha https://github.com/haxeui/haxeui-kha --skip-dependencies
+		haxelib git haxeui-hxwidgets https://github.com/haxeui/haxeui-hxwidgets --skip-dependencies
+		haxelib git hxWidgets https://github.com/haxeui/hxWidgets --skip-dependencies
+		haxelib git haxeui-html5 https://github.com/haxeui/haxeui-html5 --skip-dependencies
+		haxelib git haxeui-heaps https://github.com/haxeui/haxeui-heaps --skip-dependencies
+		haxelib git haxeui-android https://github.com/haxeui/haxeui-android --skip-dependencies
+		haxelib git haxeui-raylib https://github.com/haxeui/haxeui-raylib --skip-dependencies
+		haxelib git haxeui-nme https://github.com/haxeui/haxeui-nme --skip-dependencies
+		haxelib git haxeui-pdcurses https://github.com/haxeui/haxeui-pdcurses --skip-dependencies
+		haxelib git haxeui-winforms https://github.com/haxeui/haxeui-winforms --skip-dependencies
+		haxelib git haxeui-pixijs https://github.com/haxeui/haxeui-pixijs --skip-dependencies
+		haxelib git haxeui-code-editor https://github.com/haxeui/haxeui-code-editor --skip-dependencies
+		# back2dos
+		haxelib git html-entities https://github.com/back2dos/html-entities --skip-dependencies
+		# MongoDB
+		haxelib git mongodb http://github.com/MattTuttle/mongo-haxe-driver --skip-dependencies
+		haxelib git mongomod https://github.com/yar3333/haxe-mongomod --skip-dependencies
+		# Cound not get git version of refactor working yet.
+		haxelib git refactor https://github.com/yar3333/haxe-refactor --skip-dependencies
+		#haxelib install refactor --skip-dependencies
+		# HaxeLink/C compiler
+		#haxelib install hlc-compiler
+		#-------------------------------
+		# FORKS OF TINK LIBRARIES
+		# - ~/haxelib$ ../repos/admin-scripts/git-subsub-notcommitted.sh
+		# - https://github.com/xet7/admin-scripts/blob/master/git-subsub-notcommitted.sh
+		# - TINK_HTTP: Haxe 5 fixes and HTTP header code
+		#   haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
+		haxelib remove tink_http
+		haxelib git tink_http https://github.com/haxetink2/tink_http --skip-dependencies
+		# - HTTP-STATUS: kevinresol
+		#   haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
+		haxelib remove http-status
+		haxelib git http-status https://github.com/haxetink2/http-status --skip-dependencies
+		# - TINK_IO: Haxe 5 fixes
+		#   haxelib git tink_io https://github.com/haxetink/tink_io --skip-dependencies
+		haxelib remove tink_io
+		haxelib git tink_io https://github.com/haxetink2/tink_io --skip-dependencies
+		# - TINK_SQL: Haxe 5 fixes
+		#   haxelib git tink_sql https://github.com/haxetink/tink_sql --skip-dependencies
+		haxelib remove tink_sql
+		haxelib git tink_sql https://github.com/haxetink2/tink_sql --skip-dependencies
+		# - TINK_STREAMS: Haxe 5 fixes
+		#   haxelib git tink_streams https://github.com/haxetink/tink_streams --skip-dependencies
+		haxelib remove tink_streams
+		haxelib git tink_streams https://github.com/haxetink2/tink_streams --skip-dependencies
+		# - TINK_TCP: Haxe 5 fixes
+		#   haxelib git tink_tcp https://github.com/haxetink/tink_tcp --skip-dependencies
+		haxelib remove tink_tcp
+		haxelib git tink_tcp https://github.com/haxetink2/tink_tcp --skip-dependencies		
+		# - TINK_UNITTEST: Haxe 5 fixes		
+		#   haxelib git tink_unittest https://github.com/haxetink/tink_unittest --skip-dependencies
+		haxelib remove tink_unittest
+		haxelib git tink_unittest https://github.com/haxetink2/tink_unittest --skip-dependencies
+		# - TINK_VALIDATION: Haxe 5 fixes
+		#   haxelib git tink_validation https://github.com/haxetink/tink_validation --skip-dependencies
+		haxelib remove tink_validation
+		haxelib git tink_validation https://github.com/haxetink2/tink_validation --skip-dependencies
+		# - TINK_WEB: Haxe 5 fixes
+		#   haxelib git tink_web https://github.com/haxetink/tink_web --skip-dependencies
+		haxelib remove tink_web
+		haxelib git tink_web https://github.com/haxetink2/tink_web --skip-dependencies
+		# - TINK_WEBSOCKET: Haxe 5 fixes
+		#   haxelib git tink_websocket https://github.com/haxetink/tink_websocket --skip-dependencies
+		haxelib remove tink_websocket
+		haxelib git tink_websocket https://github.com/haxetink2/tink_websocket --skip-dependencies            
+		#-------------------------------
+		# REMAINING ORIGINAL TINK LIBRARIES
+		## A
+		haxelib git tink_adhoc https://github.com/haxetink/tink_adhoc --skip-dependencies
+		haxelib git tink_anon https://github.com/haxetink/tink_anon --skip-dependencies
+		haxelib git tink_await https://github.com/haxetink/tink_await --skip-dependencies
+		## C
+		haxelib git tink_core https://github.com/haxetink/tink_core --skip-dependencies
+		haxelib git tink_chunk https://github.com/haxetink/tink_chunk --skip-dependencies
+		haxelib git tink_color https://github.com/haxetink/tink_color --skip-dependencies
+		haxelib git tink_cli https://github.com/haxetink/tink_cli --skip-dependencies
+		haxelib git tink_clone https://github.com/haxetink/tink_clone --skip-dependencies
+		haxelib git tink_concurrent https://github.com/haxetink/tink_concurrent --skip-dependencies
+		haxelib git tink_csss https://github.com/haxetink/tink_csss --skip-dependencies
+		haxelib git tink_cssclass https://github.com/haxetink/tink_cssclass --skip-dependencies
+		## D
+		haxelib git tink_domspec https://github.com/haxetink/tink_domspec --skip-dependencies
+		## F
+		haxelib git tink_fs https://github.com/haxetink/tink_fs --skip-dependencies
+		## G
+		haxelib git tink_geom2 https://github.com/haxetink/tink_geom2 --skip-dependencies
+		## H
+		haxelib git tink_html https://github.com/haxetink/tink_html --skip-dependencies
+		haxelib git tink_htmlstring https://github.com/haxetink/tink_htmlstring --skip-dependencies
+		# H continued
+		haxelib git tink_http_middleware https://github.com/haxetink/tink_http_middleware --skip-dependencies
+		haxelib git tink_hxx https://github.com/haxetink/tink_hxx --skip-dependencies
+		## I
+		haxelib git tink_ip https://github.com/haxetink/tink_ip --skip-dependencies
+		## J
+		haxelib git tink_json https://github.com/haxetink/tink_json --skip-dependencies
+		## L
+		haxelib git tink_lang https://github.com/haxetink/tink_lang --skip-dependencies
+		## M
+		haxelib git tink_macro https://github.com/haxetink/tink_macro --skip-dependencies
+		haxelib git tink_multipart https://github.com/haxetink/tink_multipart --skip-dependencies
+		## N
+		haxelib git tink_null https://github.com/haxetink/tink_null --skip-dependencies
+		## O
+		haxelib git tink_onbuild https://github.com/haxetink/tink_onbuild --skip-dependencies
+		## P
+		haxelib git tink_parse https://github.com/haxetink/tink_parse --skip-dependencies
+		haxelib git tink_path https://github.com/haxetink/tink_path --skip-dependencies
+		haxelib git tink_priority https://github.com/haxetink/tink_priority --skip-dependencies
+		haxelib git tink_protocol https://github.com/haxetink/tink_protocol --skip-dependencies
+		haxelib git tink_pure https://github.com/haxetink/tink_pure --skip-dependencies
+		## Q
+		haxelib git tink_querystring https://github.com/haxetink/tink_querystring --skip-dependencies
+		## R
+		haxelib git tink_runloop https://github.com/haxetink/tink_runloop --skip-dependencies
+		## S
+		haxelib git tink_semver https://github.com/haxetink/tink_semver --skip-dependencies
+		haxelib git tink_serialize https://github.com/haxetink/tink_serialize --skip-dependencies
+		haxelib git tink_slice https://github.com/haxetink/tink_slice --skip-dependencies
+		haxelib git tink_spatial https://github.com/haxetink/tink_spatial --skip-dependencies
+		haxelib git tink_spec https://github.com/haxetink/tink_spec --skip-dependencies
+		haxelib git tink_springs https://github.com/haxetink/tink_springs --skip-dependencies
+		haxelib git tink_state https://github.com/haxetink/tink_state --skip-dependencies
+		haxelib git tink_stringly https://github.com/haxetink/tink_stringly --skip-dependencies
+		haxelib git tink_syntaxhub https://github.com/haxetink/tink_syntaxhub --skip-dependencies
+		haxelib git tink_svgspec https://github.com/haxetink/tink_svgspec --skip-dependencies
+		## T
+		haxelib git tink_template https://github.com/haxetink/tink_template --skip-dependencies
+		haxelib git tink_testadapter https://github.com/haxetink/tink_testadapter --skip-dependencies
+		haxelib git tink_testrunner https://github.com/haxetink/tink_testrunner --skip-dependencies
+		haxelib git tink_typecrawler https://github.com/haxetink/tink_typecrawler --skip-dependencies
+		## U
+		haxelib git tink_url https://github.com/haxetink/tink_url --skip-dependencies
+		haxelib git tink_uv https://github.com/haxetink/tink_uv --skip-dependencies
+		## X
+		haxelib git tink_xml https://github.com/haxetink/tink_xml --skip-dependencies
+		echo Done.
+		break
+		;;
 
         "Haxelib Setup")
             echo "Haxelib Setup."

@@ -235,21 +235,33 @@ do
             # FORKS OF TINK LIBRARIES
             # - ~/haxelib$ ../repos/admin-scripts/git-subsub-notcommitted.sh
             # - https://github.com/xet7/admin-scripts/blob/master/git-subsub-notcommitted.sh
-            # - HTTP: Haxe 5 fixes and HTTP header code
+            # - TINK_HTTP: Haxe 5 fixes and HTTP header code
             #   haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
             haxelib git tink_http https://github.com/haxetink2/tink_http --skip-dependencies
             # - HTTP-STATUS: kevinresol
             #   haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
             haxelib git http-status https://github.com/haxetink2/http-status --skip-dependencies
-            # - IO: Haxe 5 fixes
+            # - TINK_IO: Haxe 5 fixes
             #   haxelib git tink_io https://github.com/haxetink/tink_io --skip-dependencies
             haxelib git tink_io https://github.com/haxetink2/tink_io --skip-dependencies
-            # - SQL: Haxe 5 fixes
+            # - TINK_SQL: Haxe 5 fixes
             #   haxelib git tink_sql https://github.com/haxetink/tink_sql --skip-dependencies
             haxelib git tink_sql https://github.com/haxetink2/tink_sql --skip-dependencies
-            # - STREAMS: Haxe 5 fixes
+            # - TINK_STREAMS: Haxe 5 fixes
             #   haxelib git tink_streams https://github.com/haxetink/tink_streams --skip-dependencies
             haxelib git tink_streams https://github.com/haxetink2/tink_streams --skip-dependencies
+            # - TINK_TCP: Haxe 5 fixes
+            #   haxelib git tink_tcp https://github.com/haxetink/tink_tcp --skip-dependencies
+            haxelib git tink_tcp https://github.com/haxetink2/tink_tcp --skip-dependencies
+            # - TINK_VALIDATION: Haxe 5 fixes
+            #   haxelib git tink_validation https://github.com/haxetink/tink_validation --skip-dependencies
+            haxelib git tink_validation https://github.com/haxetink2/tink_validation --skip-dependencies
+            # - TINK_WEB: Haxe 5 fixes
+            #   haxelib git tink_web https://github.com/haxetink/tink_web --skip-dependencies
+            haxelib git tink_web https://github.com/haxetink2/tink_web --skip-dependencies
+            # - TINK_WEBSOCKET: Haxe 5 fixes
+            #   haxelib git tink_websocket https://github.com/haxetink/tink_websocket --skip-dependencies
+            haxelib git tink_websocket https://github.com/haxetink2/tink_websocket --skip-dependencies
             #-------------------------------
             # REMAINING ORIGINAL TINK LIBRARIES
             ## A
@@ -312,7 +324,6 @@ do
             haxelib git tink_syntaxhub https://github.com/haxetink/tink_syntaxhub --skip-dependencies
             haxelib git tink_svgspec https://github.com/haxetink/tink_svgspec --skip-dependencies
             ## T
-            haxelib git tink_tcp https://github.com/haxetink/tink_tcp --skip-dependencies
             haxelib git tink_template https://github.com/haxetink/tink_template --skip-dependencies
             haxelib git tink_testadapter https://github.com/haxetink/tink_testadapter --skip-dependencies
             haxelib git tink_testrunner https://github.com/haxetink/tink_testrunner --skip-dependencies
@@ -321,11 +332,6 @@ do
             haxelib git tink_unittest https://github.com/haxetink/tink_unittest --skip-dependencies
             haxelib git tink_url https://github.com/haxetink/tink_url --skip-dependencies
             haxelib git tink_uv https://github.com/haxetink/tink_uv --skip-dependencies
-            ## V
-            haxelib git tink_validation https://github.com/haxetink/tink_validation --skip-dependencies
-            ## W
-            haxelib git tink_web https://github.com/haxetink/tink_web --skip-dependencies
-            haxelib git tink_websocket https://github.com/haxetink/tink_websocket --skip-dependencies
             ## X
             haxelib git tink_xml https://github.com/haxetink/tink_xml --skip-dependencies
             echo Done.

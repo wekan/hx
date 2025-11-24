@@ -223,8 +223,6 @@ do
             haxelib git haxeui-code-editor https://github.com/haxeui/haxeui-code-editor --skip-dependencies
             # back2dos
             haxelib git html-entities https://github.com/back2dos/html-entities --skip-dependencies
-            # kevinresol
-            haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
             # MongoDB
             haxelib git mongodb http://github.com/MattTuttle/mongo-haxe-driver --skip-dependencies
             haxelib git mongomod https://github.com/yar3333/haxe-mongomod --skip-dependencies
@@ -257,7 +255,17 @@ do
             ## H
             haxelib git tink_html https://github.com/haxetink/tink_html --skip-dependencies
             haxelib git tink_htmlstring https://github.com/haxetink/tink_htmlstring --skip-dependencies
-            haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
+            # HTTP
+            # - ~/haxelib$ ../repos/admin-scripts/git-subsub-notcommitted.sh
+            #    https://github.com/xet7/admin-scripts/blob/master/git-subsub-notcommitted.sh
+            # - xet7 forks for Haxe 5 fixes and HTTP header code
+            #   - Haxe 5 fixes and HTTP header code
+            #     haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
+            #   - kevinresol
+            #     haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
+            haxelib git tink_http https://github.com/haxetink2/tink_http --skip-dependencies
+            haxelib git http-status https://github.com/haxetink2/http-status --skip-dependencies
+            # H continued
             haxelib git tink_http_middleware https://github.com/haxetink/tink_http_middleware --skip-dependencies
             haxelib git tink_hxx https://github.com/haxetink/tink_hxx --skip-dependencies
             ## I

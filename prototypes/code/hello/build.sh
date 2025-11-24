@@ -266,7 +266,6 @@ do
             ## A
             haxelib git tink_adhoc https://github.com/haxetink/tink_adhoc --skip-dependencies
             haxelib git tink_anon https://github.com/haxetink/tink_anon --skip-dependencies
-            haxelib git tink_autospod https://github.com/haxetink/tink_autospod --skip-dependencies
             haxelib git tink_await https://github.com/haxetink/tink_await --skip-dependencies
             ## C
             haxelib git tink_core https://github.com/haxetink/tink_core --skip-dependencies

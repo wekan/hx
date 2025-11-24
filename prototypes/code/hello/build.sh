@@ -232,7 +232,20 @@ do
             # HaxeLink/C compiler
             #haxelib install hlc-compiler
             #-------------------------------
-            # Tink
+            # FORKS OF TINK LIBRARIES
+            # - ~/haxelib$ ../repos/admin-scripts/git-subsub-notcommitted.sh
+            # - https://github.com/xet7/admin-scripts/blob/master/git-subsub-notcommitted.sh
+            # - HTTP: Haxe 5 fixes and HTTP header code
+            #   haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
+            haxelib git tink_http https://github.com/haxetink2/tink_http --skip-dependencies
+            # - HTTP-STATUS: kevinresol
+            #   haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
+            haxelib git http-status https://github.com/haxetink2/http-status --skip-dependencies
+            # - IO: Haxe 5 fixes
+            #   haxelib git tink_io https://github.com/haxetink/tink_io --skip-dependencies
+            haxelib git tink_io https://github.com/haxetink2/tink_io --skip-dependencies
+            #-------------------------------
+            # REMAINING ORIGINAL TINK LIBRARIES
             ## A
             haxelib git tink_adhoc https://github.com/haxetink/tink_adhoc --skip-dependencies
             haxelib git tink_anon https://github.com/haxetink/tink_anon --skip-dependencies
@@ -255,21 +268,10 @@ do
             ## H
             haxelib git tink_html https://github.com/haxetink/tink_html --skip-dependencies
             haxelib git tink_htmlstring https://github.com/haxetink/tink_htmlstring --skip-dependencies
-            # HTTP
-            # - ~/haxelib$ ../repos/admin-scripts/git-subsub-notcommitted.sh
-            #    https://github.com/xet7/admin-scripts/blob/master/git-subsub-notcommitted.sh
-            # - xet7 forks for Haxe 5 fixes and HTTP header code
-            #   - Haxe 5 fixes and HTTP header code
-            #     haxelib git tink_http https://github.com/haxetink/tink_http --skip-dependencies
-            #   - kevinresol
-            #     haxelib git http-status https://github.com/kevinresol/http-status --skip-dependencies
-            haxelib git tink_http https://github.com/haxetink2/tink_http --skip-dependencies
-            haxelib git http-status https://github.com/haxetink2/http-status --skip-dependencies
             # H continued
             haxelib git tink_http_middleware https://github.com/haxetink/tink_http_middleware --skip-dependencies
             haxelib git tink_hxx https://github.com/haxetink/tink_hxx --skip-dependencies
             ## I
-            haxelib git tink_io https://github.com/haxetink/tink_io --skip-dependencies
             haxelib git tink_ip https://github.com/haxetink/tink_ip --skip-dependencies
             ## J
             haxelib git tink_json https://github.com/haxetink/tink_json --skip-dependencies

@@ -190,6 +190,8 @@ do
 
         "Haxelib Install All Packages")
             echo "Haxelib Install All Packages."
+            # Reflaxe
+            haxelib git reflaxe https://github.com/SomeRanDev/reflaxe --skip-dependencies
             # benmerckx
             haxelib git asys https://github.com/benmerckx/asys --skip-dependencies
             haxelib git mime https://github.com/benmerckx/mime --skip-dependencies

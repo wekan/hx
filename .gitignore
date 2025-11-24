@@ -1,5 +1,6 @@
 .build/*
 .build*
+/prototypes/ui/html5/build/*
 tests/mongo/mongoc/find
 node_modules
 *.json

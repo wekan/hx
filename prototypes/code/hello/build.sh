@@ -58,7 +58,7 @@ do
                 echo "Linux";
                 # Debian, Ubuntu, Mint
                 sudo apt-get -y update
-                sudo apt-get install -y build-essential gcc g++ make git curl wget cmake tree ncdu libpcre2-dev \
+                sudo apt-get install -y build-essential gcc g++ make git curl wget cmake tree ncdu libpcre2-dev libsqlite3-dev \
                 p7zip-full zip unzip unp mono-complete lsb-release ca-certificates apt-transport-https gnupg2 \
                 lua5.4 liblua5.4-dev luarocks php8.4 php8.4-cli php8.4-mbstring php8.4-zip php8.4-curl openjdk-25-jdk-headless
                 #

@@ -62,7 +62,7 @@ do
                 p7zip-full zip unzip unp mono-complete lsb-release ca-certificates apt-transport-https gnupg2 \
                 lua5.4 liblua5.4-dev luarocks php8.4 php8.4-cli php8.4-mbstring php8.4-zip php8.4-curl openjdk-25-jdk-headless
                 #
-                sudo luarocks install lrexlib-pcre
+                sudo luarocks install lrexlib-pcre2
                 sudo luarocks install environ
                 sudo luarocks install luasocket
                 sudo luarocks install luv
@@ -111,7 +111,7 @@ do
                 #sudo chown -R $(id -u):$(id -g) $HOME/.npm $HOME/.meteor
             elif [[ "$OSTYPE" == "linux-musl" ]]; then
                 yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua5.4-luautf8 lua-luv-dev luarocks5.4 php84 php84-mbstring curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk25-jdk
-                luarocks-5.4 install lrexlib-pcre PCRE_DIR=/usr/local
+                luarocks-5.4 install lrexlib-pcre2 PCRE_DIR=/usr/local
                 luarocks-5.4 install environ
                 luarocks-5.4 install luasocket
                 luarocks-5.4 install luv
@@ -135,7 +135,7 @@ do
                 # Old: sudo ln -sfn /opt/homebres/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 # https://stackoverflow.com/questions/69875335/macos-how-to-install-java-17
                 sudo ln -sfn /opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
-                luarocks install lrexlib-pcre
+                luarocks install lrexlib-pcre2
                 luarocks install environ
                 luarocks install luasocket
                 luarocks install luv

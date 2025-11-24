@@ -57,29 +57,16 @@ do
             if [[ "$OSTYPE" == "linux-gnu" ]]; then
                 echo "Linux";
                 # Debian, Ubuntu, Mint
-                sudo apt-get install -y build-essential gcc g++ make git curl wget cmake tree ncdu
-                sudo apt-get install -y p7zip-full zip unzip unp
-                sudo apt-get install -y mono-complete
-                # PHP 8.4
-                sudo apt-get install -y lsb-release ca-certificates apt-transport-https gnupg2
-                # Ubuntu:
-                sudo apt-get install -y lua5.4 liblua5.4-dev luarocks
-                #sudo apt-get install -y php8.0-cli php8.0-mbstring
-                #sudo add-apt-repository -y ppa:ondrej/php  # php8.4 is already in Ubuntu 22.04
                 sudo apt-get -y update
-                sudo apt-get -y install php8.4 php8.4-cli php8.4-mbstring php8.4-zip php8.4-curl
-		#Ubuntu and Mint:
-		#sudo apt-get install -y openjdk-18-jdk
-		#Debian:
-		#sudo apt-get install -y openjdk-17-jdk-headless
-		sudo apt-get install -y openjdk-25-jdk-headless
+                sudo apt-get install -y build-essential gcc g++ make git curl wget cmake tree ncdu libpcre2-dev \
+                p7zip-full zip unzip unp mono-complete lsb-release ca-certificates apt-transport-https gnupg2 \
+                lua5.4 liblua5.4-dev luarocks php8.4 php8.4-cli php8.4-mbstring php8.4-zip php8.4-curl openjdk-25-jdk-headless
                 #
                 sudo luarocks install lrexlib-pcre
                 sudo luarocks install environ
                 sudo luarocks install luasocket
                 sudo luarocks install luv
                 sudo luarocks install luautf8
-
                 # HashLink deps
                 sudo apt-get -y install libpng-dev libturbojpeg-dev libvorbis-dev libopenal-dev libsdl2-dev libmbedtls-dev libuv1-dev
                 mkdir ~/repos
@@ -89,12 +76,11 @@ do
                 make
                 # Install HashLink libs to /usr/local/lib
                 sudo make install
-
                 # Delete old Haxe binary directory
                 rm -rf ~/repos/haxebin
                 mkdir -p ~/repos/haxebin
                 cd ~/repos/haxebin
-
+                # Download Haxe
                 if  [[ $(uname -m) = "x86_64" ]]
                 then
                   # Download amd64 Haxe nightly build
@@ -109,37 +95,20 @@ do
                 # Unarchive Haxe
                 tar -xzvf haxe_latest.tar.gz
                 tar -xzvf neko_latest.tar.gz
-
                 # Delete archives
                 rm haxe*.tar.gz
                 rm neko*.tar.gz
-
                 # Rename directories
                 mv haxe_* haxe
                 mv neko-* neko
-
-                # Update .bashrc
-                #cd ~
-
-                # Does not work: Delete old Haxe etc path from .bashrc
-                #cat ~/.bashrc | grep -v haxe > ~/.bashrc
-
-                # Maybe later: Add new paths to .bashrc
-                #cat ~/repos/wekan/devpath.txt >> ~/.bashrc
-
-                # Maybe laterUse new paths
-                #source .bashrc
-
-                # Change back to Wekan directory
+                # Change back to repo https://github.com/wekan/hx
                 cd ~/repos/w/hx/prototypes/code/hello
-
                 # Show new paths
                 echo "________________________________o_____"
                 echo "Please add these to your ~/.bashrc :"
                 echo ""
                 cat ~/repos/w/hx/prototypes/code/hello/devpath.txt
                 #sudo chown -R $(id -u):$(id -g) $HOME/.npm $HOME/.meteor
-
             elif [[ "$OSTYPE" == "linux-musl" ]]; then
                 yes | apk add cmake mlocate haxe git zip unzip p7zip nano alpine-sdk mono lua5.4-dev lua5.4-rex-pcre2 lua5.4-luautf8 lua-luv-dev luarocks5.4 php84 php84-mbstring curl wget firefox-esr firefox chromium netsurf konqueror godot openjdk25-jdk
                 luarocks-5.4 install lrexlib-pcre PCRE_DIR=/usr/local
@@ -161,7 +130,7 @@ do
                 #macOS provides OpenAL.framework, so no need to install openal
                 #Changed dotnet-sdk => mono, because dotnet did not work
                 #Changed openjdk@11 => openjdk@17
-                brew install nano node@24 cmake haxe hashlink wget p7zip zip unzip unp screen mono openjdk@21 luarocks php@8.4 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
+                brew install nano node@24 cmake haxe hashlink wget p7zip zip unzip unp screen mono openjdk@25 luarocks php@8.4 libpng jpeg-turbo libvorbis sdl2 mbedtls@2 libuv
                 # Install Java
                 # Old: sudo ln -sfn /opt/homebres/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
                 # https://stackoverflow.com/questions/69875335/macos-how-to-install-java-17

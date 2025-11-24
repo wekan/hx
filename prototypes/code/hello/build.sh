@@ -71,6 +71,7 @@ do
                 sudo apt-get -y install libpng-dev libturbojpeg-dev libvorbis-dev libopenal-dev libsdl2-dev libmbedtls-dev libuv1-dev
                 mkdir ~/repos
                 cd ~/repos
+                rm -rf hashlink
                 git clone https://github.com/HaxeFoundation/hashlink
                 cd ~/repos/hashlink
                 make

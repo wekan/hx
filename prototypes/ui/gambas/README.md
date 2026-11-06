@@ -1,3 +1,11 @@
+# This WeKan Gambas project has moved to new location
+
+New location:
+
+https://github.com/wekan/weba
+
+# OLD:
+
 # WeKan ®
 
 This uses Gambas for WebUI app with SQLite database.

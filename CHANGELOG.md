@@ -1,6 +1,20 @@
 # Upcoming Wekan.hx release
 
-This release adds the following improvements:
+This release fixes the following security issues found by Dependabot and
+GitHub CodeQL code scanning:
+
+- [Node.js prototype: dompurify 3.5.0, qs 6.17.1 and jszip 3.10.2](https://github.com/wekan/hx/commit/02e5451edbc4e4c506ad14a030629aa06153af02).
+  Thanks to xet7.
+- [Node.js prototype: brace-expansion, minimatch, semver, tar-fs and tmp updated in the lockfile](https://github.com/wekan/hx/commit/6c017ad0f08f58f5b24f28424d8d03606ea0d1a4).
+  Thanks to xet7.
+- [Node.js prototype: overrides for path-to-regexp (page), uuid (exceljs) and katex (mermaid)](https://github.com/wekan/hx/commit/10c8df21a45ecda6eb04eed2d98e565092f8ca5b),
+  whose dependents pin vulnerable ranges. Thanks to xet7.
+- [fullmoon prototype: htmx 1.8.4 updated to 2.0.11](https://github.com/wekan/hx/commit/48d3d17be2f4703ed17ca7b76b4220e736019755).
+  Thanks to xet7.
+- [HTML5 prototype: a linear email pattern replaces haxeui-core's backtracking one, and Main.js is rebuilt](https://github.com/wekan/hx/commit/f78dbb0d9830633c6d483ab67530fb489b8acff5).
+  Thanks to xet7.
+
+and adds the following improvements:
 
 - [Moved static version to tests/static](https://github.com/wekan/hx/commit/68015a67380927ac0db05abcb5a5c56abe268bda).
   Thanks to xet7.

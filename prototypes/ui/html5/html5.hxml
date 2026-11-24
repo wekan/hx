@@ -1,8 +1,11 @@
--cp src
 -main Main
 
 -lib haxeui-core
 -lib haxeui-html5
 -lib hscript
+
+# After the -lib lines: a class path added later is searched first, so
+# src/haxe/ui/validators/EmailValidator.hx replaces haxeui-core's.
+-cp src
 
 -js build/html5/Main.js

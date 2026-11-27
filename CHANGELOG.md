@@ -13,6 +13,8 @@ GitHub CodeQL code scanning:
   Thanks to xet7.
 - [HTML5 prototype: a linear email pattern replaces haxeui-core's backtracking one, and Main.js is rebuilt](https://github.com/wekan/hx/commit/f78dbb0d9830633c6d483ab67530fb489b8acff5).
   Thanks to xet7.
+- [fullmoon prototype: htmx eval and scripts in responses are turned off](https://github.com/wekan/hx/commit/013311e29ff8e4d9830505bec5a28e48e122e088),
+  as the remaining CodeQL alerts are htmx's own design. Thanks to xet7.
 
 and adds the following improvements:
 

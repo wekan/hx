@@ -3,6 +3,9 @@
  html{lang="en",
   head{
    title"Trello in fullmoon and htmx",
+   -- No script runs from what htmx swaps in: none of these templates uses
+   -- hx-on, js: values, trigger filters or a <script> in a response.
+   meta{name="htmx-config", content='{"allowEval":false,"allowScriptTags":false}'},
    link{href="styles.css", rel="stylesheet"},
   },
   body{
